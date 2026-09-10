@@ -1610,6 +1610,38 @@ function roomNext(room) {
    online play.                                                            */
 const PEERJS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js";
 const peerIdFor = (code) => `magniguess-v1-${code}`;
+const CONNECT_TIMEOUT = 20000;
+
+// STUN lets two peers discover their public address and talk directly. It is
+// enough for most home and mobile networks. It is NOT enough for symmetric
+// NAT — strict corporate networks and some mobile carriers — where the only
+// fix is a TURN relay, which has to be paid for or self-hosted. Add one here
+// and everyone who currently fails will start connecting:
+//   { urls: "turn:your.server:3478", username: "...", credential: "..." }
+const PEER_OPTS = {
+  debug: 0,
+  config: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:global.stun.twilio.com:3478" }
+    ]
+  }
+};
+
+// A peer that cannot find a path just sits there, so give up out loud.
+function withTimeout(conn, onFail) {
+  const timer = setTimeout(() => {
+    if (conn.open) return;
+    const ice = conn.peerConnection && conn.peerConnection.iceConnectionState;
+    onFail(ice === "failed" || ice === "disconnected" || ice === "checking"
+      ? "Could not open a direct connection. Some networks block peer-to-peer — try another wifi or a phone hotspot."
+      : "The host did not answer. Check the code and that they still have the room open.");
+    try { conn.close(); } catch (e) {}
+  }, CONNECT_TIMEOUT);
+  conn.on("open", () => clearTimeout(timer));
+  return timer;
+}
 
 let net = null;     // { host, peer, conns, send }
 let room = null;    // the room object: authoritative on the host, a copy on guests
@@ -1661,7 +1693,7 @@ async function createRoom() {
 
   const code = roomCode();
   const hostId = peerIdFor(code);
-  const peer = new Peer(hostId, { debug: 0 });
+  const peer = new Peer(hostId, PEER_OPTS);
   myId = hostId;
   net = { host: true, peer, conns: [] };
   room = newRoom(code, hostId, name);
@@ -1679,6 +1711,7 @@ async function createRoom() {
   });
   peer.on("connection", (conn) => {
     if (stale()) { try { conn.close(); } catch (e) {} return; }
+    withTimeout(conn, () => {});
     conn.on("open", () => {
       if (stale()) return;
       net.conns.push(conn);
@@ -1721,7 +1754,7 @@ async function joinRoom() {
   catch (e) { return stale() || netStatus(e.message, true); }
   if (stale()) return;
 
-  const peer = new Peer({ debug: 0 });
+  const peer = new Peer(PEER_OPTS);
   net = { host: false, peer, conns: [] };
   peer.on("open", (id) => {
     if (stale()) { try { peer.destroy(); } catch (e) {} return; }
@@ -1729,6 +1762,7 @@ async function joinRoom() {
     const conn = peer.connect(peerIdFor(code), { reliable: true });
     net.conns = [conn];
     net.send = (m) => { try { conn.send(m); } catch (e) {} };
+    withTimeout(conn, (why) => { if (!stale()) { netStatus(why, true); closeNet(); } });
     conn.on("open", () => {
       if (stale()) return;
       netStatus("Connected — waiting for the host to start.");
