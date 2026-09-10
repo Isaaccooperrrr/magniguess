@@ -539,6 +539,9 @@
           <div class="code" id="roomCodeText">----</div>
           <div class="sub" id="roomCodeSub">Share this with your friends</div>
         </div>
+        <div class="home-actions" style="margin-bottom: 16px">
+          <button id="inviteBtn" hidden>Copy invite link</button>
+        </div>
         <h3 class="section-label">In the room</h3>
         <div class="board" id="lobbyPlayers"></div>
         <h3 class="section-label" style="margin: 20px 0 10px">Rounds</h3>
@@ -1629,14 +1632,32 @@ const PEER_OPTS = {
   }
 };
 
+// PeerJS keeps a socket to the broker. It drops on idle, on a network blip, and
+// whenever a phone or a background tab is suspended — and the peer still looks
+// open afterwards, so the room stays listed but nothing can reach it. Every
+// peer therefore has to watch for that and climb back on.
+function keepAlive(peer, stale, onState) {
+  peer.on("disconnected", () => {
+    if (stale() || peer.destroyed) return;
+    onState("reconnecting");
+    setTimeout(() => { if (!stale() && !peer.destroyed) { try { peer.reconnect(); } catch (e) {} } }, 800);
+  });
+  peer.on("close", () => { if (!stale()) onState("closed"); });
+  // Coming back to a suspended tab is the usual way this is noticed.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || stale() || peer.destroyed) return;
+    if (peer.disconnected) { onState("reconnecting"); try { peer.reconnect(); } catch (e) {} }
+  });
+}
+
 // A peer that cannot find a path just sits there, so give up out loud.
 function withTimeout(conn, onFail) {
   const timer = setTimeout(() => {
     if (conn.open) return;
     const ice = conn.peerConnection && conn.peerConnection.iceConnectionState;
     onFail(ice === "failed" || ice === "disconnected" || ice === "checking"
-      ? "Could not open a direct connection. Some networks block peer-to-peer — try another wifi or a phone hotspot."
-      : "The host did not answer. Check the code and that they still have the room open.");
+      ? "Could not open a direct connection. Some networks block peer-to-peer — try another wifi, or a phone hotspot."
+      : "Could not reach that room. Ask the host to leave and start a new one, then try the fresh code.");
     try { conn.close(); } catch (e) {}
   }, CONNECT_TIMEOUT);
   conn.on("open", () => clearTimeout(timer));
@@ -1650,6 +1671,7 @@ let myId = null;
 // room, the abandoned attempt's callbacks would otherwise land on the live
 // session and clobber it — so every session gets a token and stale ones bail.
 let netSession = 0;
+let hostLive = false;   // is our room actually reachable through the broker?
 
 function loadPeerJS() {
   if (window.Peer) return Promise.resolve(window.Peer);
@@ -1682,6 +1704,7 @@ function closeNet() {
 
 async function createRoom() {
   closeNet();
+  hostLive = false;
   const mine = netSession;
   const stale = () => netSession !== mine;
   const name = ($("onlineName").value || "").trim() || "Host";
@@ -1700,7 +1723,13 @@ async function createRoom() {
 
   peer.on("open", () => {
     if (stale()) { try { peer.destroy(); } catch (e) {} return; }
-    netStatus("Room open — waiting for players.");
+    hostLive = true;
+    showRoom();
+  });
+  keepAlive(peer, stale, (state) => {
+    hostLive = state === "open";
+    if (state === "reconnecting") netStatus("Connection dropped — getting the room back…", true);
+    else if (state === "closed") netStatus("The room closed. Start a new one.", true);
     showRoom();
   });
   peer.on("error", (err) => {
@@ -1756,6 +1785,9 @@ async function joinRoom() {
 
   const peer = new Peer(PEER_OPTS);
   net = { host: false, peer, conns: [] };
+  keepAlive(peer, stale, (state) => {
+    if (state === "reconnecting") netStatus("Connection dropped — reconnecting…", true);
+  });
   peer.on("open", (id) => {
     if (stale()) { try { peer.destroy(); } catch (e) {} return; }
     myId = id;
@@ -1791,8 +1823,9 @@ function showRoom() {
   $("onlineRoom").hidden = false;
   $("roomCodeText").textContent = room.code;
   $("roomCodeSub").textContent = net && net.host
-    ? "Share this with your friends"
+    ? (hostLive ? "Share the code, or send the link below" : "Getting the room online…")
     : "You are in this room";
+  $("inviteBtn").hidden = !(net && net.host);
   const box = $("lobbyPlayers");
   box.innerHTML = "";
   room.members.forEach((m, i) => {
@@ -1815,10 +1848,10 @@ function showRoom() {
   }
   $("onlineStartBtn").hidden = !(net && net.host);
   $("onlineStartBtn").disabled = room.members.length < 2;
-  if (net && net.host) {
+  if (net && net.host && hostLive) {
     const n = room.members.length;
     netStatus(n < 2
-      ? "Waiting for someone to join…"
+      ? "Room is open — waiting for someone to join…"
       : `${n} players in. Start whenever you are ready.`);
   }
 }
@@ -2531,6 +2564,17 @@ function readChallengeFromUrl() {
   if (c && CATEGORIES.includes(c)) category = c;
 }
 
+// An invite link fills the code in, so nobody has to read letters aloud.
+function readRoomFromUrl() {
+  let p;
+  try { p = new URLSearchParams(location.search); } catch (e) { return false; }
+  const code = (p.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
+  if (code.length !== 4) return false;
+  mode = "online";
+  $("joinCode").value = code;
+  return true;
+}
+
 function setChallenge(code) {
   challengeSeed = code;
   refreshHome();
@@ -2670,6 +2714,12 @@ $("partyBackBtn").addEventListener("click", goHome);
 $("partyStartBtn").addEventListener("click", beginRun);
 $("passReadyBtn").addEventListener("click", takeTurn);
 $("createRoomBtn").addEventListener("click", createRoom);
+$("inviteBtn").addEventListener("click", async () => {
+  if (!room) return;
+  const url = `${location.href.split(/[?#]/)[0]}?room=${room.code}`;
+  try { await navigator.clipboard.writeText(url); toast("Invite link copied"); }
+  catch (e) { window.prompt("Send your friends this link:", url); }
+});
 $("joinRoomBtn").addEventListener("click", joinRoom);
 $("onlineBackBtn").addEventListener("click", goHome);
 $("onlineStartBtn").addEventListener("click", () => {
@@ -2744,7 +2794,13 @@ setMuted(muted);
 setSizeInput(sizeInput);
 buildHome();
 readChallengeFromUrl();
+const invited = readRoomFromUrl();
 refreshHome();
+if (invited) {
+  showScreen("onlineScreen");
+  netStatus("Enter your name, then tap Join.");
+  setTimeout(() => { try { $("onlineName").focus(); } catch (e) {} }, 60);
+}
 updateReadout();
 </script>
 </body>
