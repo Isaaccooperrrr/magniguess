@@ -1,0 +1,2717 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Magniguess — order-of-magnitude survival</title>
+<meta name="description" content="Guess how big things are on a logarithmic scale. Three lives. How long can you last?" />
+<meta name="theme-color" content="#0b0d12" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Magniguess" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<style>
+  :root {
+    --bg: #0b0d12;
+    --bg-raise: #12151d;
+    --bg-raise-2: #171b25;
+    --line: #262c39;
+    --line-soft: #1d222d;
+    --text: #eef1f7;
+    --muted: #949cad;
+    --faint: #626a7a;
+    --accent: #6ee7b7;
+    --accent-dim: #2f6f5a;
+    --guess: #7dd3fc;
+    --truth: #fbbf24;
+    --bad: #f87171;
+    --ok: #a3e635;
+    --radius: 16px;
+    --thumb: 26px;
+    --ease: cubic-bezier(.2,.7,.3,1);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #16202e 0%, transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: clamp(12px, 3vw, 32px);
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+
+  .wrap { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ---------- shared bits ---------- */
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--muted);
+    background: var(--bg-raise-2);
+    border: 1px solid var(--line);
+    padding: 5px 11px; border-radius: 999px;
+  }
+  .tag[data-cat="science"]      { color: #93c5fd; border-color: #24405f; }
+  .tag[data-cat="geography"]    { color: #6ee7b7; border-color: #205448; }
+  .tag[data-cat="history"]      { color: #fcd34d; border-color: #574118; }
+  .tag[data-cat="pop culture"]  { color: #f0abfc; border-color: #4d2452; }
+  .tag[data-cat="nature"]       { color: #bef264; border-color: #3b4d1c; }
+  .tag[data-cat="sizes"]        { color: #fbbf24; border-color: #57411a; }
+
+  button {
+    font: inherit; cursor: pointer; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--bg-raise-2); color: var(--text); padding: 13px 20px; font-weight: 620;
+    transition: transform .12s var(--ease), background .16s var(--ease), border-color .16s var(--ease), opacity .16s;
+  }
+  button:hover { background: #1e2431; border-color: #343d4e; }
+  button:active { transform: translateY(1px) scale(.995); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary {
+    background: linear-gradient(180deg, #7ff0c1, #43c99b);
+    color: #06231a; border-color: transparent; font-weight: 750;
+  }
+  button.primary:hover { background: linear-gradient(180deg, #93f5cd, #4fd6a7); }
+  button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+  /* ---------- header ---------- */
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .brand {
+    font-size: clamp(20px, 5vw, 26px); font-weight: 800; letter-spacing: -.02em; margin: 0;
+  }
+  .brand span { color: var(--accent); }
+  .mode-label { font-size: 12px; color: var(--faint); letter-spacing: .08em; text-transform: uppercase; }
+  .head-right { display: flex; align-items: center; gap: 10px; }
+  #muteBtn { font-size: 15px; }
+  #muteBtn.muted { opacity: .5; }
+
+  /* ---------- screens ---------- */
+  .screen { display: none; animation: rise .28s var(--ease) both; }
+  .screen.on { display: flex; flex-direction: column; gap: 18px; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .card {
+    background: linear-gradient(180deg, var(--bg-raise), #0f1219);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: clamp(18px, 4vw, 26px);
+  }
+
+  /* ---------- home ---------- */
+  .lede { color: var(--muted); line-height: 1.6; margin: 0 0 20px; font-size: 15px; }
+  .lede b { color: var(--text); font-weight: 640; }
+  .rules { margin: 0; padding-left: 18px; color: var(--muted); line-height: 1.75; font-size: 14.5px; }
+  .rules b { color: var(--text); font-weight: 640; }
+  .section-label {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+    font-weight: 700; margin: 0 0 10px;
+  }
+  .mode-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 22px; }
+  /* an odd number of modes: let the last one fill the row rather than sit half-empty */
+  .mode-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .mode-card {
+    position: relative; text-align: left; padding: 15px 16px 14px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .mode-card[aria-pressed="true"] {
+    border-color: var(--accent-dim); background: #132720;
+    box-shadow: inset 0 0 0 1px rgba(110,231,183,.12);
+  }
+  .mode-card .m-icon { font-size: 17px; line-height: 1; margin-bottom: 5px; }
+  .mode-card .m-title { font-weight: 720; font-size: 15.5px; }
+  .mode-card .m-sub { font-size: 12.5px; color: var(--muted); font-weight: 500; line-height: 1.45; }
+  .mode-card .m-meta {
+    font-size: 11px; color: var(--faint); font-weight: 620; letter-spacing: .03em;
+    margin-top: 7px; font-variant-numeric: tabular-nums;
+  }
+  .mode-card .m-best {
+    position: absolute; top: 13px; right: 14px; font-size: 11px; font-weight: 700;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chips button {
+    padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 620;
+    color: var(--muted); background: transparent;
+  }
+  .chips button[aria-pressed="true"] { color: var(--text); border-color: var(--accent-dim); background: #142a24; }
+  .chips button:disabled { opacity: .3; }
+  .chip-note { font-size: 12.5px; color: var(--faint); margin: 12px 0 0; min-height: 1.2em; }
+  details.how { margin-top: 20px; border-top: 1px solid var(--line-soft); padding-top: 14px; }
+  details.how summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
+  details.how .rules { margin-top: 12px; }
+
+  /* ---------- HUD ---------- */
+  .hud {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--bg-raise); border: 1px solid var(--line-soft);
+    border-radius: 14px; padding: 10px 14px;
+  }
+  .hud-left { display: flex; align-items: center; gap: 12px; }
+  .icon-btn {
+    padding: 0; width: 30px; height: 30px; display: grid; place-items: center;
+    font-size: 14px; color: var(--muted); background: transparent; border-radius: 9px;
+  }
+  .icon-btn:hover { color: var(--text); }
+  .timer {
+    font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em; color: var(--accent);
+  }
+  .timer.low { color: var(--bad); animation: tick 1s steps(2, jump-none) infinite; }
+  @keyframes tick { 50% { opacity: .45; } }
+  .lives { display: flex; gap: 5px; font-size: 19px; line-height: 1; }
+  .heart { transition: transform .3s var(--ease), opacity .3s var(--ease), filter .3s; }
+  .heart.lost { opacity: .22; filter: grayscale(1); transform: scale(.82); }
+  .heart.breaking { animation: shatter .5s var(--ease); }
+  @keyframes shatter {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.35) rotate(-8deg); }
+    100% { transform: scale(.82); }
+  }
+  .stats { display: flex; gap: 16px; }
+  .stat { text-align: right; }
+  .stat .k { display: block; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .stat .v { display: block; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* ---------- question ---------- */
+  .q-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .q-index { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .prompt {
+    font-size: clamp(21px, 5.4vw, 30px); line-height: 1.25; font-weight: 700;
+    letter-spacing: -.02em; margin: 0 0 8px;
+  }
+  .unit { color: var(--muted); font-size: 14.5px; margin: 0; }
+  #questionCard { transition: opacity .18s var(--ease), transform .18s var(--ease); }
+  #questionCard.swap { opacity: 0; transform: translateY(-8px); }
+
+  /* ---------- scale ---------- */
+  .scale { margin-top: 22px; }
+  .readout {
+    text-align: center; font-variant-numeric: tabular-nums;
+    font-size: clamp(26px, 7vw, 38px); font-weight: 800; letter-spacing: -.03em;
+    color: var(--guess); min-height: 1.15em; transition: color .2s;
+  }
+  .readout.revealed { color: var(--truth); }
+  .readout small { font-size: 15px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+
+  .markers { position: relative; height: 54px; margin-top: 10px; }
+  .marker {
+    position: absolute; bottom: 0; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 11.5px; font-weight: 700; white-space: nowrap;
+    transition: left .55s var(--ease), opacity .3s var(--ease);
+  }
+  .marker .pin { width: 2px; height: 13px; border-radius: 2px; background: currentColor; }
+  /* small chip behind each label so a pin passing by never cuts through the text */
+  .marker > span:first-child { background: #12151c; padding: 1px 5px; border-radius: 6px; }
+  .marker.guess { color: var(--guess); z-index: 2; transition: left .09s linear, opacity .3s; }
+  .marker.guess.locked { animation: nudge .4s var(--ease); }
+  .marker.truth { color: var(--truth); opacity: 0; }
+  /* the truth label rides a lane above "you" so the two never collide */
+  .marker.truth .pin { height: 32px; }
+  .marker.truth.show { opacity: 1; animation: pop .45s var(--ease) both; }
+  @keyframes pop { from { transform: translateX(-50%) translateY(-8px) scale(.8); } to { transform: translateX(-50%); } }
+  @keyframes nudge {
+    0% { transform: translateX(-50%) scale(1); }
+    45% { transform: translateX(-50%) scale(1.18); }
+    100% { transform: translateX(-50%) scale(1); }
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; width: 100%; margin: 0; background: transparent;
+    height: var(--thumb); display: block; cursor: grab;
+  }
+  input[type="range"]:active { cursor: grabbing; }
+  input[type="range"]:focus { outline: none; }
+  input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(110,231,183,.4); }
+  input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(110,231,183,.4); }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 8px; border-radius: 999px;
+    background: linear-gradient(90deg, #1b3a4d, #244a4a 45%, #3d4230 75%, #4a3520);
+    border: 1px solid var(--line);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 8px; border-radius: 999px;
+    background: linear-gradient(90deg, #1b3a4d, #244a4a 45%, #3d4230 75%, #4a3520);
+    border: 1px solid var(--line);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: var(--thumb); height: var(--thumb); margin-top: calc((8px - var(--thumb)) / 2);
+    border-radius: 50%; background: radial-gradient(circle at 35% 30%, #eaf9ff, var(--guess));
+    border: 2px solid #0b0d12; box-shadow: 0 0 0 1px var(--guess), 0 4px 14px rgba(125,211,252,.35);
+    transition: box-shadow .2s;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: var(--thumb); height: var(--thumb); border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #eaf9ff, var(--guess));
+    border: 2px solid #0b0d12; box-shadow: 0 0 0 1px var(--guess), 0 4px 14px rgba(125,211,252,.35);
+  }
+  input[type="range"]:disabled::-webkit-slider-thumb { box-shadow: 0 0 0 1px var(--faint); background: #64748b; }
+  input[type="range"]:disabled::-moz-range-thumb { box-shadow: 0 0 0 1px var(--faint); background: #64748b; }
+
+  .ticks { position: relative; height: 30px; margin-top: 4px; }
+  .tick { position: absolute; top: 0; transform: translateX(-50%); text-align: center; }
+  .tick i { display: block; width: 1px; height: 6px; background: var(--line); margin: 0 auto 4px; }
+  .tick.major i { height: 9px; background: #39424f; }
+  .tick b { font-size: 10.5px; font-weight: 600; color: var(--faint); letter-spacing: .04em; }
+  .tick.minor b { display: none; }
+
+  /* ---------- size it up ---------- */
+  .scene {
+    position: relative; height: clamp(190px, 36vh, 300px); margin-top: 18px;
+    border-radius: 12px; overflow: hidden;
+    background: linear-gradient(180deg, #0d1017 0%, #131923 100%);
+    border: 1px solid var(--line-soft);
+    touch-action: none;
+  }
+  .figs {
+    position: absolute; left: 0; right: 0; bottom: 2px;
+    display: flex; align-items: flex-end; justify-content: center; gap: 11%;
+    padding: 0 14px;
+  }
+  .fig { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: 0 0 auto; }
+  .fig-label {
+    font-size: 11px; font-weight: 700; color: var(--faint); white-space: nowrap;
+    order: -1; font-variant-numeric: tabular-nums;
+  }
+  .fig-body { position: relative; display: flex; justify-content: center; align-items: flex-end; }
+  .fig.human .fig-label { color: var(--muted); }
+  .fig.human svg { display: block; }
+  .fig.subject { cursor: ns-resize; }
+  .fig.subject .fig-label { color: var(--guess); }
+  .fig.subject.revealed .fig-label { color: var(--truth); }
+  .subject-shape { display: block; color: var(--guess); transition: color .35s var(--ease); }
+  .subject-shape * { fill: currentColor; }
+  .fig.subject.revealed .subject-shape { color: var(--truth); }
+  .fig.human svg * { fill: #8e9bb0; }
+  /* the corner grip: drag it outward to grow the object */
+  .grip {
+    position: absolute; top: -7px; right: -7px; width: 15px; height: 15px;
+    border-radius: 4px; background: var(--guess); border: 2px solid #0b0d12;
+    box-shadow: 0 0 0 1px var(--guess), 0 2px 8px rgba(125,211,252,.4);
+    cursor: nwse-resize; touch-action: none;
+  }
+  .grip::after {
+    content: ""; position: absolute; inset: -12px;   /* a fat touch target */
+  }
+  .fig.subject:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 4px; }
+  .ground-line { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #2c3542; }
+  .scene-hint {
+    position: absolute; top: 8px; left: 0; right: 0; text-align: center;
+    font-size: 11px; color: var(--faint); letter-spacing: .06em; text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .actions button { flex: 1 1 130px; }
+  .hint { text-align: center; color: var(--faint); font-size: 12px; margin: 10px 0 0; }
+
+  /* ---------- reveal ---------- */
+  .reveal { margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 16px; display: none; }
+  .reveal.on { display: block; animation: rise .26s var(--ease) both; }
+  .verdict { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .verdict .word { font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+  .verdict .pts { font-size: 15px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .truth-line { margin: 10px 0 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
+  .truth-line b { color: var(--truth); font-weight: 750; }
+  .err-line { margin: 6px 0 0; color: var(--faint); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- pass and play ---------- */
+  .p-row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .p-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .p-row input {
+    flex: 1; min-width: 0; font: inherit; font-weight: 620; color: var(--text);
+    background: var(--bg-raise-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .p-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .turn-banner { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+  .turn-banner .p-dot { width: 10px; height: 10px; }
+  .round-count { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  .pass-overlay {
+    position: absolute; inset: 0; z-index: 5; border-radius: var(--radius);
+    background: #0f1219;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    animation: rise .2s var(--ease) both;
+  }
+  .pass-overlay .to { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .pass-overlay .who { font-size: clamp(26px, 8vw, 40px); font-weight: 800; letter-spacing: -.03em; margin-bottom: 14px; }
+  .pass-overlay button { min-width: 190px; }
+
+  .marker.party { color: var(--guess); }
+  .board { margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; }
+  .board-row {
+    display: flex; align-items: center; gap: 9px; font-size: 14px;
+    padding: 7px 10px; border-radius: 9px; background: var(--bg-raise-2);
+  }
+  .board-row.lead { background: #142a24; }
+  .board-row .nm { flex: 1; font-weight: 640; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .board-row .gs { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .board-row .pt { font-weight: 750; font-variant-numeric: tabular-nums; }
+  .board-row .rk { color: var(--faint); font-size: 12px; width: 16px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- online rooms ---------- */
+  .code-box {
+    text-align: center; padding: 16px; border-radius: 12px;
+    background: var(--bg-raise-2); border: 1px solid var(--accent-dim); margin-bottom: 14px;
+  }
+  .code-box .lbl { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .code-box .code {
+    font-size: clamp(34px, 11vw, 52px); font-weight: 800; letter-spacing: .18em;
+    color: var(--accent); font-variant-numeric: tabular-nums; margin: 4px 0 2px;
+  }
+  .code-box .sub { font-size: 12.5px; color: var(--muted); }
+  .net-status { font-size: 13px; color: var(--muted); margin: 0 0 12px; min-height: 1.2em; }
+  .net-status.bad { color: var(--bad); }
+  .join-row { display: flex; gap: 8px; }
+  .join-row input {
+    flex: 1; min-width: 0; font: inherit; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--text); background: var(--bg-raise-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px; text-align: center;
+  }
+  .join-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .waiting { font-size: 12.5px; color: var(--faint); font-style: italic; }
+
+  /* ---------- stats ---------- */
+  .cat-row { margin-bottom: 14px; }
+  .cat-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-bottom: 6px; flex-wrap: wrap;
+  }
+  .cat-num { font-size: 12.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .cat-num b { color: var(--text); font-weight: 700; }
+  .bar { height: 7px; border-radius: 999px; background: var(--bg-raise-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width .5s var(--ease); }
+  .cat-row.thin .bar i { background: var(--faint); }
+  .empty-note { color: var(--faint); font-size: 14px; line-height: 1.6; margin: 0; }
+  .badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+  .badge {
+    display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px;
+    border: 1px solid var(--line-soft); border-radius: 12px; background: var(--bg-raise-2);
+    transition: opacity .3s, filter .3s;
+  }
+  .badge.locked { opacity: .38; filter: grayscale(1); }
+  .badge .b-icon { font-size: 17px; line-height: 1.25; }
+  .badge .b-name { display: block; font-weight: 700; font-size: 13.5px; }
+  .badge .b-desc { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+  .banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: #132720; border: 1px solid var(--accent-dim); border-radius: 12px;
+    padding: 11px 12px 11px 15px; font-size: 13.5px; color: var(--muted); line-height: 1.45;
+  }
+  .banner b { color: var(--accent); font-weight: 750; letter-spacing: .04em; }
+  .banner button { padding: 6px 12px; font-size: 12.5px; flex: none; }
+  .home-actions { display: flex; gap: 10px; }
+  .home-actions button { flex: 1; }
+
+  /* ---------- game over ---------- */
+  .go-title { font-size: clamp(26px, 7vw, 34px); font-weight: 800; letter-spacing: -.03em; margin: 0 0 4px; }
+  .go-sub { color: var(--muted); margin: 0 0 18px; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .box { background: var(--bg-raise-2); border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px; }
+  .box .k { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .box .v { font-size: clamp(20px, 5vw, 26px); font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 4px; letter-spacing: -.02em; }
+  .box .v small { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+  .newbest { color: var(--accent); font-weight: 700; font-size: 13.5px; margin: 12px 0 0; }
+  .emojis { font-size: 20px; line-height: 1.5; letter-spacing: 2px; margin: 16px 0 0; word-break: break-word; }
+  .recap { margin: 16px 0 0; border-top: 1px solid var(--line-soft); }
+  .recap details { padding-top: 12px; }
+  .recap summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
+  .recap ol { margin: 12px 0 0; padding-left: 22px; color: var(--muted); font-size: 13.5px; line-height: 1.7; }
+  .recap li b { color: var(--text); font-weight: 620; }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px);
+    background: var(--bg-raise-2); border: 1px solid var(--line); color: var(--text);
+    padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s var(--ease);
+  }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  footer { color: var(--faint); font-size: 12px; text-align: center; line-height: 1.6; }
+
+  @media (max-width: 560px) {
+    .mode-grid { grid-template-columns: 1fr; }
+    .mode-card { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 8px; padding-right: 76px; }
+    .mode-card .m-icon { margin-bottom: 0; }
+    .mode-card .m-sub { flex-basis: 100%; }
+    .mode-card .m-meta { margin-top: 2px; }
+  }
+  @media (max-width: 480px) {
+    .stats { gap: 12px; }
+    .stat .v { font-size: 15px; }
+    .actions { flex-direction: column-reverse; }
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 class="brand">Magni<span>guess</span></h1>
+    <div class="head-right">
+      <div class="mode-label" id="modeLabel">order-of-magnitude survival</div>
+      <button class="icon-btn" id="muteBtn" title="Sound on/off" aria-label="Sound on/off" aria-pressed="true">&#128266;</button>
+    </div>
+  </header>
+
+  <!-- ================= START ================= -->
+  <section class="screen on" id="startScreen">
+    <div class="banner" id="challengeBanner" hidden>
+      <span>Challenge deck <b id="challengeCode">—</b> — the same questions, in the same order, as whoever shared this link.</span>
+      <button id="leaveChallengeBtn">Leave</button>
+    </div>
+    <div class="card">
+      <p class="lede">Every answer is a number. You never type it — you slide it, on a scale that runs from <b>1</b> to <b>a trillion</b>. Get within an order of magnitude and you live.</p>
+
+      <h2 class="section-label">Choose a mode</h2>
+      <div class="mode-grid" id="modeGrid" role="group" aria-label="Game mode"></div>
+
+      <div id="sizeInputRow" hidden>
+        <h2 class="section-label">Resize by</h2>
+        <div class="chips" id="sizeInputChips">
+          <button data-input="slider">Slider</button>
+          <button data-input="grip">Dragging the corner</button>
+        </div>
+        <p class="chip-note" id="sizeInputNote"></p>
+      </div>
+
+      <h2 class="section-label">Focus a category</h2>
+      <div class="chips" id="catChips" role="group" aria-label="Category"></div>
+      <p class="chip-note" id="catNote"></p>
+
+      <details class="how">
+        <summary>How scoring works</summary>
+        <ul class="rules">
+          <li><b>Points:</b> 100 for a bullseye, dropping 20 for every order of magnitude you are off.</li>
+          <li><b>Tolerance:</b> stay inside the mode's slack and you survive the question; go past it and it costs a life.</li>
+          <li><b>Streaks</b> build on every question you survive and reset the moment you miss.</li>
+          <li>Answers are rounded, widely-cited figures — you are only ever graded on magnitude.</li>
+        </ul>
+      </details>
+    </div>
+    <div class="home-actions">
+      <button id="statsBtn">Your record</button>
+      <button class="primary" id="startBtn" style="flex: 2">Start guessing</button>
+    </div>
+  </section>
+
+  <!-- ================= ONLINE LOBBY ================= -->
+  <section class="screen" id="onlineScreen">
+    <div class="card">
+      <h2 class="go-title">Play online</h2>
+      <p class="go-sub" id="onlineBlurb">One of you starts a room and reads out the code. Everyone else joins from their own device.</p>
+
+      <div class="p-row" style="margin-bottom: 14px">
+        <span class="p-dot" style="background: var(--accent)"></span>
+        <input id="onlineName" maxlength="14" placeholder="Your name" aria-label="Your name" />
+      </div>
+
+      <div id="onlineStart">
+        <div class="home-actions">
+          <button class="primary" id="createRoomBtn">Start a room</button>
+        </div>
+        <h3 class="section-label" style="margin: 22px 0 10px">Or join one</h3>
+        <div class="join-row">
+          <input id="joinCode" maxlength="4" placeholder="CODE" aria-label="Room code" />
+          <button id="joinRoomBtn">Join</button>
+        </div>
+      </div>
+
+      <div id="onlineRoom" hidden>
+        <div class="code-box">
+          <div class="lbl">Room code</div>
+          <div class="code" id="roomCodeText">----</div>
+          <div class="sub" id="roomCodeSub">Share this with your friends</div>
+        </div>
+        <h3 class="section-label">In the room</h3>
+        <div class="board" id="lobbyPlayers"></div>
+        <h3 class="section-label" style="margin: 20px 0 10px">Rounds</h3>
+        <div class="chips" id="onlineRoundChips"></div>
+      </div>
+
+      <p class="net-status" id="netStatus"></p>
+    </div>
+    <div class="actions" style="margin: 0">
+      <button id="onlineBackBtn">Leave</button>
+      <button class="primary" id="onlineStartBtn" hidden>Start the game</button>
+    </div>
+  </section>
+
+  <!-- ================= PASS AND PLAY SETUP ================= -->
+  <section class="screen" id="partyScreen">
+    <div class="card">
+      <h2 class="go-title">Pass and play</h2>
+      <p class="go-sub">One device, taken in turns. Everyone answers the same question before anyone sees the answer.</p>
+      <h3 class="section-label">Players</h3>
+      <div id="playerRows"></div>
+      <div class="home-actions" style="margin-top: 10px">
+        <button id="addPlayerBtn">Add player</button>
+        <button id="removePlayerBtn">Remove last</button>
+      </div>
+      <h3 class="section-label" style="margin: 22px 0 10px">Rounds</h3>
+      <div class="chips" id="roundChips"></div>
+    </div>
+    <div class="actions" style="margin: 0">
+      <button id="partyBackBtn">Back</button>
+      <button class="primary" id="partyStartBtn">Start playing</button>
+    </div>
+  </section>
+
+  <!-- ================= STATS ================= -->
+  <section class="screen" id="statsScreen">
+    <div class="card">
+      <h2 class="go-title">Your record</h2>
+      <p class="go-sub" id="statsHeadline">—</p>
+      <div class="grid">
+        <div class="box"><div class="k">Answered</div><div class="v" id="stAnswered">0</div></div>
+        <div class="box"><div class="k">Average score</div><div class="v" id="stAvg">0</div></div>
+        <div class="box"><div class="k">Hit rate</div><div class="v" id="stHits">0<small>%</small></div></div>
+        <div class="box"><div class="k">Typical miss</div><div class="v" id="stErr">—</div></div>
+      </div>
+      <h3 class="section-label" style="margin: 22px 0 12px">By category</h3>
+      <div id="catStats"></div>
+      <h3 class="section-label" style="margin: 22px 0 12px">Badges <span id="badgeCount" style="color: var(--accent)"></span></h3>
+      <div class="badges" id="badgeCase"></div>
+    </div>
+    <div class="actions" style="margin: 0">
+      <button id="resetStatsBtn">Reset record</button>
+      <button class="primary" id="statsBackBtn">Back</button>
+    </div>
+  </section>
+
+  <!-- ================= PLAY ================= -->
+  <section class="screen" id="playScreen">
+    <div class="hud">
+      <div class="hud-left">
+        <button class="icon-btn" id="homeBtn" title="Back to the menu (Esc)" aria-label="Back to the menu">&#8617;</button>
+        <div class="lives" id="lives" aria-label="Lives remaining"></div>
+        <div class="timer" id="timer" hidden>90s</div>
+        <div class="turn-banner" id="turnBanner" hidden></div>
+      </div>
+      <div class="stats" id="soloStats">
+        <div class="stat"><span class="k">Streak</span><span class="v" id="streakVal">0</span></div>
+        <div class="stat"><span class="k">Score</span><span class="v" id="scoreVal">0</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="questionCard" style="position: relative">
+      <div class="pass-overlay" id="passOverlay" hidden>
+        <div class="to">Pass the device to</div>
+        <div class="who" id="passName">—</div>
+        <button class="primary" id="passReadyBtn">I'm ready</button>
+      </div>
+      <div class="q-head">
+        <span class="tag" id="catTag">science</span>
+        <span class="q-index" id="qIndex">Question 1</span>
+      </div>
+      <h2 class="prompt" id="prompt">—</h2>
+      <p class="unit" id="unit">—</p>
+
+      <div class="scale" id="sliderStage">
+        <div class="readout" id="readout">—</div>
+        <div class="markers" id="markers">
+          <div class="marker guess" id="guessMarker"><span id="guessLabel">you</span><span class="pin"></span></div>
+          <div class="marker truth" id="truthMarker"><span id="truthLabel">true</span><span class="pin"></span></div>
+        </div>
+        <input type="range" id="slider" min="0" max="12" step="0.01" value="6" aria-label="Your estimate, logarithmic scale" />
+        <div class="ticks" id="ticks"></div>
+      </div>
+
+      <div class="scale" id="sizeStage" hidden>
+        <div class="readout" id="sizeReadout">—</div>
+        <div class="scene" id="scene">
+          <div class="scene-hint" id="sceneHint">drag the shape, or the slider below</div>
+          <div class="figs">
+            <div class="fig human" id="humanFig">
+              <span class="fig-label">1.7 m</span>
+              <div class="fig-body" id="humanBody"></div>
+            </div>
+            <div class="fig subject" id="subjectFig" tabindex="0">
+              <span class="fig-label" id="subjectLabel">—</span>
+              <div class="fig-body">
+                <svg class="subject-shape" id="subjectShape" viewBox="0 0 10 10" preserveAspectRatio="none"></svg>
+                <div class="grip" id="sizeGrip" hidden role="slider" aria-label="Resize the object"></div>
+              </div>
+            </div>
+          </div>
+          <div class="ground-line"></div>
+        </div>
+        <input type="range" id="sizeSlider" min="-1.3" max="2.7" step="0.005" value="0.23" aria-label="How big is it? Drag to resize." />
+      </div>
+
+      <div class="reveal" id="reveal">
+        <div class="verdict">
+          <span class="word" id="verdictWord">—</span>
+          <span class="pts" id="verdictPts">—</span>
+        </div>
+        <p class="truth-line" id="truthLine">—</p>
+        <p class="err-line" id="errLine">—</p>
+        <div class="board" id="roundBoard" hidden></div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="actionBtn">Lock it in</button>
+      </div>
+      <p class="hint" id="hint">Drag the slider, or use ← → for fine steps. Enter to submit.</p>
+    </div>
+  </section>
+
+  <!-- ================= GAME OVER ================= -->
+  <section class="screen" id="overScreen">
+    <div class="card">
+      <h2 class="go-title" id="goTitle">Out of lives</h2>
+      <p class="go-sub" id="goSub">—</p>
+      <div class="board" id="partyResults" hidden></div>
+      <div class="grid" id="soloResults">
+        <div class="box"><div class="k">Survived</div><div class="v" id="goSurvived">0 <small>questions</small></div></div>
+        <div class="box"><div class="k">Total score</div><div class="v" id="goScore">0</div></div>
+        <div class="box"><div class="k">Best guess</div><div class="v" id="goBestErr">— <small>OOM off</small></div></div>
+        <div class="box"><div class="k">Longest streak</div><div class="v" id="goStreak">0</div></div>
+      </div>
+      <p class="newbest" id="newBest" hidden>New personal best!</p>
+      <p class="emojis" id="emojis"></p>
+      <div class="recap">
+        <details>
+          <summary>See every answer</summary>
+          <ol id="recapList"></ol>
+        </details>
+      </div>
+    </div>
+    <div class="actions" style="margin:0">
+      <button id="homeBtn2">Menu</button>
+      <button id="shareBtn">Copy result</button>
+      <button id="challengeBtn">Challenge a friend</button>
+      <button class="primary" id="againBtn">Play again</button>
+    </div>
+  </section>
+
+  <footer>An original estimation game. Answers are rounded, widely-cited figures — close enough is the whole idea.</footer>
+</div>
+<div class="toast" id="toast">Copied</div>
+
+<script>
+/* ---------------- question bank ---------------- */
+const QUESTIONS = [
+  // ---- science ----
+  { prompt: "How fast does light travel through a vacuum?", answerValue: 3e8, unit: "metres per second", category: "science" },
+  { prompt: "How many neurons are in an adult human brain?", answerValue: 8.6e10, unit: "neurons", category: "science" },
+  { prompt: "How many bones are in an adult human skeleton?", answerValue: 206, unit: "bones", category: "science" },
+  { prompt: "What is the boiling point of water on the Kelvin scale?", answerValue: 373, unit: "kelvin", category: "science" },
+  { prompt: "How many red blood cells are in a single drop of blood?", answerValue: 2.5e8, unit: "cells", category: "science" },
+  { prompt: "How many base pairs make up the human genome?", answerValue: 3.1e9, unit: "base pairs", category: "science" },
+  { prompt: "How wide is a red blood cell?", answerValue: 7000, unit: "nanometres", category: "science" },
+  { prompt: "How many chemical elements have been confirmed so far?", answerValue: 118, unit: "elements", category: "science" },
+  { prompt: "What is the wavelength of green light?", answerValue: 550, unit: "nanometres", category: "science" },
+  { prompt: "How many hairs grow on a typical human head?", answerValue: 100000, unit: "hairs", category: "science" },
+  { prompt: "How many times does an average human heart beat in a lifetime?", answerValue: 2.5e9, unit: "beats", category: "science" },
+  { prompt: "How many stars are in the Milky Way?", answerValue: 2e11, unit: "stars", category: "science" },
+  { prompt: "How old is the universe?", answerValue: 1.38e10, unit: "years", category: "science" },
+  { prompt: "How many seconds are in one year?", answerValue: 3.16e7, unit: "seconds", category: "science" },
+  { prompt: "How many taste buds sit on a human tongue?", answerValue: 10000, unit: "taste buds", category: "science" },
+  { prompt: "How many litres of air does a person breathe in a day?", answerValue: 11000, unit: "litres", category: "science" },
+
+  // ---- geography ----
+  { prompt: "How far is the Moon from Earth, on average?", answerValue: 384400, unit: "kilometres", category: "geography" },
+  { prompt: "How tall is Mount Everest above sea level?", answerValue: 8849, unit: "metres", category: "geography" },
+  { prompt: "How long is the river Nile?", answerValue: 6650, unit: "kilometres", category: "geography" },
+  { prompt: "What is the surface area of the Pacific Ocean?", answerValue: 1.65e8, unit: "square kilometres", category: "geography" },
+  { prompt: "How many people live in the Tokyo metropolitan area?", answerValue: 3.7e7, unit: "people", category: "geography" },
+  { prompt: "How many member states does the United Nations have?", answerValue: 193, unit: "countries", category: "geography" },
+  { prompt: "How deep is the bottom of the Mariana Trench?", answerValue: 10935, unit: "metres", category: "geography" },
+  { prompt: "How much water fills an Olympic swimming pool?", answerValue: 2.5e6, unit: "litres", category: "geography" },
+  { prompt: "How long is the Great Wall of China, all branches included?", answerValue: 2.1e7, unit: "metres", category: "geography" },
+  { prompt: "How many islands make up Indonesia?", answerValue: 17000, unit: "islands", category: "geography" },
+  { prompt: "How far is it around the Earth at the equator?", answerValue: 40075, unit: "kilometres", category: "geography" },
+  { prompt: "How much dry land is there on Earth?", answerValue: 1.49e8, unit: "square kilometres", category: "geography" },
+  { prompt: "How many airports are there worldwide?", answerValue: 41000, unit: "airports", category: "geography" },
+  { prompt: "How many people live on Earth right now?", answerValue: 8.2e9, unit: "people", category: "geography" },
+
+  // ---- history ----
+  { prompt: "How long ago was the Great Pyramid of Giza finished?", answerValue: 4500, unit: "years ago", category: "history" },
+  { prompt: "How long ago did the last ice age end?", answerValue: 11700, unit: "years ago", category: "history" },
+  { prompt: "How many people died in the Second World War?", answerValue: 7e7, unit: "people", category: "history" },
+  { prompt: "How many scrolls did the Library of Alexandria hold at its peak?", answerValue: 400000, unit: "scrolls", category: "history" },
+  { prompt: "How long ago did humans first reach Australia?", answerValue: 65000, unit: "years ago", category: "history" },
+  { prompt: "How many pyramids have been found in Egypt?", answerValue: 118, unit: "pyramids", category: "history" },
+  { prompt: "How many clay soldiers are in the Terracotta Army?", answerValue: 8000, unit: "figures", category: "history" },
+  { prompt: "How old are the oldest known cave paintings?", answerValue: 45000, unit: "years", category: "history" },
+  { prompt: "How many years did the Western Roman Empire last?", answerValue: 500, unit: "years", category: "history" },
+  { prompt: "How many people were alive in the year 1 CE?", answerValue: 2e8, unit: "people", category: "history" },
+
+  // ---- pop culture ----
+  { prompt: "How many Lego bricks are manufactured each year?", answerValue: 7.5e10, unit: "bricks", category: "pop culture" },
+  { prompt: "How many copies of Minecraft have been sold?", answerValue: 3e8, unit: "copies", category: "pop culture" },
+  { prompt: "How many episodes of The Simpsons have aired?", answerValue: 790, unit: "episodes", category: "pop culture" },
+  { prompt: "How much did the first Avatar film make at the global box office?", answerValue: 2.9e9, unit: "US dollars", category: "pop culture" },
+  { prompt: "How many people use YouTube each month?", answerValue: 2.5e9, unit: "users", category: "pop culture" },
+  { prompt: "How many tracks are on Spotify?", answerValue: 1e8, unit: "songs", category: "pop culture" },
+  { prompt: "How many followers does the most-followed Instagram account have?", answerValue: 6.5e8, unit: "followers", category: "pop culture" },
+  { prompt: "How many species of Pokemon exist across all generations?", answerValue: 1025, unit: "species", category: "pop culture" },
+  { prompt: "How many words are in the seven Harry Potter novels combined?", answerValue: 1.08e6, unit: "words", category: "pop culture" },
+  { prompt: "How many frames are shown in a two-hour film at 24 fps?", answerValue: 172800, unit: "frames", category: "pop culture" },
+
+  // ---- nature ----
+  { prompt: "How many species of ant have been described?", answerValue: 14000, unit: "species", category: "nature" },
+  { prompt: "How many species of bird are there?", answerValue: 11000, unit: "species", category: "nature" },
+  { prompt: "How long does an adult mayfly live?", answerValue: 1440, unit: "minutes", category: "nature" },
+  { prompt: "How many trees grow in the Amazon rainforest?", answerValue: 3.9e11, unit: "trees", category: "nature" },
+  { prompt: "How much does an adult African elephant weigh?", answerValue: 6000, unit: "kilograms", category: "nature" },
+  { prompt: "How many eggs does a queen termite lay in a day?", answerValue: 30000, unit: "eggs", category: "nature" },
+  { prompt: "How wide is the wingspan of a wandering albatross?", answerValue: 350, unit: "centimetres", category: "nature" },
+  { prompt: "How many grains of rice are in a one-kilogram bag?", answerValue: 50000, unit: "grains", category: "nature" },
+  { prompt: "How many bees live in a healthy honeybee hive?", answerValue: 50000, unit: "bees", category: "nature" },
+  { prompt: "How deep can a sperm whale dive?", answerValue: 2250, unit: "metres", category: "nature" },
+  { prompt: "How many insect species have scientists named?", answerValue: 1e6, unit: "species", category: "nature" },
+  { prompt: "How fast is a peregrine falcon at the bottom of a dive?", answerValue: 390, unit: "km/h", category: "nature" },
+  { prompt: "How much water does a large oak tree draw up on a summer day?", answerValue: 400, unit: "litres", category: "nature" },
+  { prompt: "How much does an adult blue whale weigh?", answerValue: 150000, unit: "kilograms", category: "nature" },
+
+  // ---- science, second batch ----
+  { prompt: "How hot is the surface of the Sun?", answerValue: 5772, unit: "kelvin", category: "science" },
+  { prompt: "How hot is the core of the Sun?", answerValue: 1.5e7, unit: "kelvin", category: "science" },
+  { prompt: "How wide is the Earth through the middle?", answerValue: 12742, unit: "kilometres", category: "science" },
+  { prompt: "How far is the Earth from the Sun?", answerValue: 1.496e8, unit: "kilometres", category: "science" },
+  { prompt: "How wide is the Sun?", answerValue: 1.39e6, unit: "kilometres", category: "science" },
+  { prompt: "How fast does the Earth travel around the Sun?", answerValue: 107000, unit: "km/h", category: "science" },
+  { prompt: "How fast does a point on the equator move as the Earth spins?", answerValue: 1670, unit: "km/h", category: "science" },
+  { prompt: "How fast does sound travel through air?", answerValue: 343, unit: "metres per second", category: "science" },
+  { prompt: "How fast does sound travel through water?", answerValue: 1480, unit: "metres per second", category: "science" },
+  { prompt: "What is the highest frequency a young human ear can hear?", answerValue: 20000, unit: "hertz", category: "science" },
+  { prompt: "How many joules of energy are in one food Calorie?", answerValue: 4184, unit: "joules", category: "science" },
+  { prompt: "How many protons are in an atom of gold?", answerValue: 79, unit: "protons", category: "science" },
+  { prompt: "How much blood does an adult human body hold?", answerValue: 5000, unit: "millilitres", category: "science" },
+  { prompt: "How long is the DNA uncoiled from a single human cell?", answerValue: 200, unit: "centimetres", category: "science" },
+  { prompt: "How many of your cells die and are replaced every second?", answerValue: 3.8e6, unit: "cells", category: "science" },
+  { prompt: "How thick is a single sheet of printer paper?", answerValue: 100000, unit: "nanometres", category: "science" },
+  { prompt: "What is the half-life of carbon-14?", answerValue: 5730, unit: "years", category: "science" },
+  { prompt: "What is the half-life of uranium-238?", answerValue: 4.5e9, unit: "years", category: "science" },
+  { prompt: "How old is the Earth?", answerValue: 4.54e9, unit: "years", category: "science" },
+  { prompt: "How many working satellites are orbiting the Earth?", answerValue: 10000, unit: "satellites", category: "science" },
+  { prompt: "How much does the International Space Station weigh?", answerValue: 420000, unit: "kilograms", category: "science" },
+  { prompt: "How high above the Earth does the Space Station orbit?", answerValue: 400, unit: "kilometres", category: "science" },
+  { prompt: "How much blood vessel is packed into one human body?", answerValue: 100000, unit: "kilometres", category: "science" },
+  { prompt: "How many muscles does the human body have?", answerValue: 600, unit: "muscles", category: "science" },
+  { prompt: "How many species of fungus have been described?", answerValue: 150000, unit: "species", category: "science" },
+  { prompt: "How many transistors are on a modern phone's main chip?", answerValue: 1.9e10, unit: "transistors", category: "science" },
+  { prompt: "How fast does a hummingbird's heart beat?", answerValue: 1200, unit: "beats per minute", category: "science" },
+
+  // ---- geography, second batch ----
+  { prompt: "How tall is the Burj Khalifa?", answerValue: 828, unit: "metres", category: "geography" },
+  { prompt: "How tall is the Eiffel Tower?", answerValue: 330, unit: "metres", category: "geography" },
+  { prompt: "How long is the Amazon river?", answerValue: 6400, unit: "kilometres", category: "geography" },
+  { prompt: "How much water is in Lake Superior?", answerValue: 12100, unit: "cubic kilometres", category: "geography" },
+  { prompt: "How big is the Sahara desert?", answerValue: 9.2e6, unit: "square kilometres", category: "geography" },
+  { prompt: "How many people live in Iceland?", answerValue: 390000, unit: "people", category: "geography" },
+  { prompt: "How many people live in India?", answerValue: 1.43e9, unit: "people", category: "geography" },
+  { prompt: "How many lakes are there in Finland?", answerValue: 188000, unit: "lakes", category: "geography" },
+  { prompt: "How deep is Lake Baikal?", answerValue: 1642, unit: "metres", category: "geography" },
+  { prompt: "How long is the Trans-Siberian Railway?", answerValue: 9289, unit: "kilometres", category: "geography" },
+  { prompt: "How many stations does the London Underground have?", answerValue: 272, unit: "stations", category: "geography" },
+  { prompt: "How far does water fall at Angel Falls?", answerValue: 979, unit: "metres", category: "geography" },
+  { prompt: "How big is Vatican City?", answerValue: 440000, unit: "square metres", category: "geography" },
+  { prompt: "How many bridges cross the canals of Venice?", answerValue: 400, unit: "bridges", category: "geography" },
+  { prompt: "How long is the Grand Canyon?", answerValue: 446, unit: "kilometres", category: "geography" },
+  { prompt: "How many stations does the New York subway have?", answerValue: 472, unit: "stations", category: "geography" },
+  { prompt: "How much water goes over Niagara Falls every second?", answerValue: 2.4e6, unit: "litres", category: "geography" },
+  { prompt: "How many active volcanoes are there on Earth?", answerValue: 1500, unit: "volcanoes", category: "geography" },
+  { prompt: "How many earthquakes are detected worldwide each year?", answerValue: 500000, unit: "earthquakes", category: "geography" },
+  { prompt: "How tall is the tallest living tree?", answerValue: 116, unit: "metres", category: "geography" },
+  { prompt: "How many time zones does the world use?", answerValue: 38, unit: "time zones", category: "geography" },
+  { prompt: "How far is it from London to New York?", answerValue: 5570, unit: "kilometres", category: "geography" },
+  { prompt: "How many people are in Antarctica at the height of summer?", answerValue: 4000, unit: "people", category: "geography" },
+  { prompt: "How many cities have more than a million residents?", answerValue: 550, unit: "cities", category: "geography" },
+  { prompt: "How long is Norway's coastline, islands included?", answerValue: 100000, unit: "kilometres", category: "geography" },
+  { prompt: "How many countries are there in Africa?", answerValue: 54, unit: "countries", category: "geography" },
+  { prompt: "How much road has been built across the whole world?", answerValue: 6.4e7, unit: "kilometres", category: "geography" },
+  { prompt: "How many islands make up the Philippines?", answerValue: 7641, unit: "islands", category: "geography" },
+  { prompt: "How big is Greenland?", answerValue: 2.166e6, unit: "square kilometres", category: "geography" },
+  { prompt: "How long is the Great Barrier Reef?", answerValue: 2300, unit: "kilometres", category: "geography" },
+  { prompt: "How many glaciers are there on Earth?", answerValue: 200000, unit: "glaciers", category: "geography" },
+  { prompt: "How tall is Mount Kilimanjaro?", answerValue: 5895, unit: "metres", category: "geography" },
+  { prompt: "How many national parks does the United States have?", answerValue: 63, unit: "parks", category: "geography" },
+  { prompt: "How deep is the deepest mine ever dug?", answerValue: 4000, unit: "metres", category: "geography" },
+
+  // ---- history, second batch ----
+  { prompt: "How long ago did people start farming?", answerValue: 12000, unit: "years ago", category: "history" },
+  { prompt: "How long ago was the wheel invented?", answerValue: 5500, unit: "years ago", category: "history" },
+  { prompt: "How long ago was writing invented?", answerValue: 5300, unit: "years ago", category: "history" },
+  { prompt: "How long ago did the first cities appear?", answerValue: 6000, unit: "years ago", category: "history" },
+  { prompt: "How long ago did humans learn to control fire?", answerValue: 1e6, unit: "years ago", category: "history" },
+  { prompt: "How long ago did the Neanderthals die out?", answerValue: 40000, unit: "years ago", category: "history" },
+  { prompt: "How long ago did the last mammoth die?", answerValue: 4000, unit: "years ago", category: "history" },
+  { prompt: "How long ago was the dodo last seen alive?", answerValue: 350, unit: "years ago", category: "history" },
+  { prompt: "How many stone blocks were used to build the Great Pyramid?", answerValue: 2.3e6, unit: "blocks", category: "history" },
+  { prompt: "How long were the pyramids the tallest structures on Earth?", answerValue: 3800, unit: "years", category: "history" },
+  { prompt: "How many spectators could the Colosseum seat?", answerValue: 50000, unit: "spectators", category: "history" },
+  { prompt: "How many years did the Hundred Years' War actually last?", answerValue: 116, unit: "years", category: "history" },
+  { prompt: "How many years did the Ottoman Empire last?", answerValue: 620, unit: "years", category: "history" },
+  { prompt: "How many years did the Byzantine Empire last?", answerValue: 1100, unit: "years", category: "history" },
+  { prompt: "How many years was the Silk Road in use?", answerValue: 1500, unit: "years", category: "history" },
+  { prompt: "How many years did the Cold War last?", answerValue: 45, unit: "years", category: "history" },
+  { prompt: "How many years did the Berlin Wall stand?", answerValue: 28, unit: "years", category: "history" },
+  { prompt: "How long was the Berlin Wall?", answerValue: 155000, unit: "metres", category: "history" },
+  { prompt: "How many people died in the Black Death?", answerValue: 5e7, unit: "people", category: "history" },
+  { prompt: "How many people caught the 1918 influenza?", answerValue: 5e8, unit: "people", category: "history" },
+  { prompt: "How many people died in the First World War?", answerValue: 2e7, unit: "people", category: "history" },
+  { prompt: "How many people lived in the Roman Empire at its peak?", answerValue: 6e7, unit: "people", category: "history" },
+  { prompt: "How many soldiers were in the Roman army at its peak?", answerValue: 350000, unit: "soldiers", category: "history" },
+  { prompt: "How many soldiers marched into Russia with Napoleon?", answerValue: 600000, unit: "soldiers", category: "history" },
+  { prompt: "How many ships sailed in the Spanish Armada?", answerValue: 130, unit: "ships", category: "history" },
+  { prompt: "How many passengers sailed on the Mayflower?", answerValue: 102, unit: "passengers", category: "history" },
+  { prompt: "How many people died when the Titanic sank?", answerValue: 1500, unit: "people", category: "history" },
+  { prompt: "How many troops landed in Normandy on D-Day?", answerValue: 156000, unit: "troops", category: "history" },
+  { prompt: "How many people worked on the Manhattan Project?", answerValue: 130000, unit: "workers", category: "history" },
+  { prompt: "How many workers died digging the Panama Canal?", answerValue: 25000, unit: "workers", category: "history" },
+  { prompt: "How many pharaohs ruled ancient Egypt?", answerValue: 170, unit: "pharaohs", category: "history" },
+  { prompt: "How many clay tablets were found in the library at Nineveh?", answerValue: 30000, unit: "tablets", category: "history" },
+  { prompt: "How many handwritten manuscripts does the Vatican Library hold?", answerValue: 80000, unit: "manuscripts", category: "history" },
+  { prompt: "How many Bibles did Gutenberg print in his first run?", answerValue: 180, unit: "copies", category: "history" },
+  { prompt: "How many words are in the United States Constitution?", answerValue: 4543, unit: "words", category: "history" },
+  { prompt: "How many people have walked on the Moon?", answerValue: 12, unit: "people", category: "history" },
+  { prompt: "How many people have been to space?", answerValue: 700, unit: "people", category: "history" },
+  { prompt: "How many people came to Woodstock in 1969?", answerValue: 400000, unit: "people", category: "history" },
+
+  // ---- pop culture, second batch ----
+  { prompt: "How many articles are in the English Wikipedia?", answerValue: 7e6, unit: "articles", category: "pop culture" },
+  { prompt: "How many hours of video are uploaded to YouTube each day?", answerValue: 720000, unit: "hours", category: "pop culture" },
+  { prompt: "How many subscribers does the biggest YouTube channel have?", answerValue: 3.5e8, unit: "subscribers", category: "pop culture" },
+  { prompt: "How many films are in the Marvel Cinematic Universe?", answerValue: 35, unit: "films", category: "pop culture" },
+  { prompt: "How many Star Wars films have played in cinemas?", answerValue: 12, unit: "films", category: "pop culture" },
+  { prompt: "How many copies of Thriller have been sold?", answerValue: 7e7, unit: "copies", category: "pop culture" },
+  { prompt: "How many songs did the Beatles release?", answerValue: 213, unit: "songs", category: "pop culture" },
+  { prompt: "How many episodes of Doctor Who have aired?", answerValue: 870, unit: "episodes", category: "pop culture" },
+  { prompt: "How many chapters of One Piece have been published?", answerValue: 1130, unit: "chapters", category: "pop culture" },
+  { prompt: "How many accounts have been registered for Fortnite?", answerValue: 5e8, unit: "accounts", category: "pop culture" },
+  { prompt: "How many pieces are in the largest Lego set ever sold?", answerValue: 11695, unit: "pieces", category: "pop culture" },
+  { prompt: "How many Lego minifigures have been made since 1978?", answerValue: 8e9, unit: "minifigures", category: "pop culture" },
+  { prompt: "How many Academy Awards have been handed out since 1929?", answerValue: 3000, unit: "awards", category: "pop culture" },
+  { prompt: "How many countries take part in the Eurovision Song Contest?", answerValue: 37, unit: "countries", category: "pop culture" },
+  { prompt: "How many times has TikTok been downloaded?", answerValue: 4.5e9, unit: "downloads", category: "pop culture" },
+  { prompt: "How many people subscribe to Netflix?", answerValue: 3e8, unit: "subscribers", category: "pop culture" },
+  { prompt: "How many books are in the Library of Congress?", answerValue: 1.7e7, unit: "books", category: "pop culture" },
+  { prompt: "How many people watch the Super Bowl?", answerValue: 1.2e8, unit: "viewers", category: "pop culture" },
+  { prompt: "How many people watched the 2022 World Cup final?", answerValue: 1.5e9, unit: "viewers", category: "pop culture" },
+  { prompt: "How many people watched the Game of Thrones finale?", answerValue: 1.9e7, unit: "viewers", category: "pop culture" },
+  { prompt: "How many sets of Monopoly have been sold?", answerValue: 2.75e8, unit: "sets", category: "pop culture" },
+  { prompt: "How many Rubik's Cubes have been sold?", answerValue: 5e8, unit: "cubes", category: "pop culture" },
+  { prompt: "How many Bibles have been printed?", answerValue: 5e9, unit: "copies", category: "pop culture" },
+  { prompt: "How many Pokemon trading cards have been printed?", answerValue: 5.2e10, unit: "cards", category: "pop culture" },
+  { prompt: "How many copies of Grand Theft Auto V have been sold?", answerValue: 2e8, unit: "copies", category: "pop culture" },
+  { prompt: "How many McDonald's restaurants are there worldwide?", answerValue: 40000, unit: "restaurants", category: "pop culture" },
+  { prompt: "How many cups of coffee does the world drink each day?", answerValue: 2.25e9, unit: "cups", category: "pop culture" },
+  { prompt: "How many emoji are in the Unicode standard?", answerValue: 3800, unit: "emoji", category: "pop culture" },
+  { prompt: "How many languages does Google Translate handle?", answerValue: 249, unit: "languages", category: "pop culture" },
+  { prompt: "How many apps are in the Apple App Store?", answerValue: 1.8e6, unit: "apps", category: "pop culture" },
+  { prompt: "How many games are released on Steam each year?", answerValue: 14000, unit: "games", category: "pop culture" },
+  { prompt: "How many songs are uploaded to Spotify every day?", answerValue: 120000, unit: "songs", category: "pop culture" },
+  { prompt: "How many vinyl records are sold in a year?", answerValue: 4.3e7, unit: "records", category: "pop culture" },
+  { prompt: "How many frames are hand-drawn for a Studio Ghibli film?", answerValue: 80000, unit: "frames", category: "pop culture" },
+
+  // ---- nature, second batch ----
+  { prompt: "How many eggs does an ocean sunfish lay at once?", answerValue: 3e8, unit: "eggs", category: "nature" },
+  { prompt: "How many eggs does a frog lay in one clutch?", answerValue: 4000, unit: "eggs", category: "nature" },
+  { prompt: "How many eggs will a queen bee lay in her lifetime?", answerValue: 1e6, unit: "eggs", category: "nature" },
+  { prompt: "How many feathers does a swan have?", answerValue: 25000, unit: "feathers", category: "nature" },
+  { prompt: "How many hairs grow on a square centimetre of sea otter?", answerValue: 150000, unit: "hairs", category: "nature" },
+  { prompt: "How many hairs cover a single honeybee?", answerValue: 3e6, unit: "hairs", category: "nature" },
+  { prompt: "How many leaves are on a mature oak tree?", answerValue: 200000, unit: "leaves", category: "nature" },
+  { prompt: "How many seeds are in one sunflower head?", answerValue: 1500, unit: "seeds", category: "nature" },
+  { prompt: "How many seeds are on the outside of one strawberry?", answerValue: 200, unit: "seeds", category: "nature" },
+  { prompt: "How many species of beetle have been described?", answerValue: 400000, unit: "species", category: "nature" },
+  { prompt: "How many species of spider are there?", answerValue: 52000, unit: "species", category: "nature" },
+  { prompt: "How many species of fish are there?", answerValue: 35000, unit: "species", category: "nature" },
+  { prompt: "How many species of mammal are there?", answerValue: 6500, unit: "species", category: "nature" },
+  { prompt: "How many species of orchid are there?", answerValue: 28000, unit: "species", category: "nature" },
+  { prompt: "How many species of tree are there?", answerValue: 73000, unit: "species", category: "nature" },
+  { prompt: "How many ants live in a mature leafcutter colony?", answerValue: 8e6, unit: "ants", category: "nature" },
+  { prompt: "How far does an Arctic tern fly in a year?", answerValue: 70000, unit: "kilometres", category: "nature" },
+  { prompt: "How far does a monarch butterfly migrate?", answerValue: 4000, unit: "kilometres", category: "nature" },
+  { prompt: "How many times a second does a mosquito beat its wings?", answerValue: 600, unit: "wingbeats", category: "nature" },
+  { prompt: "How many times a day does a woodpecker peck?", answerValue: 12000, unit: "pecks", category: "nature" },
+  { prompt: "How much water does an elephant drink in a day?", answerValue: 200, unit: "litres", category: "nature" },
+  { prompt: "How many muscles are in an elephant's trunk?", answerValue: 40000, unit: "muscles", category: "nature" },
+  { prompt: "How many teeth does a shark grow in its lifetime?", answerValue: 30000, unit: "teeth", category: "nature" },
+  { prompt: "How many quills does a porcupine carry?", answerValue: 30000, unit: "quills", category: "nature" },
+  { prompt: "How many eyes does a scallop have?", answerValue: 200, unit: "eyes", category: "nature" },
+  { prompt: "How many hearts does an octopus have?", answerValue: 3, unit: "hearts", category: "nature" },
+  { prompt: "How many bones are in a snake?", answerValue: 1200, unit: "bones", category: "nature" },
+  { prompt: "How many legs does the leggiest millipede ever found have?", answerValue: 1306, unit: "legs", category: "nature" },
+  { prompt: "How many taste receptors does a catfish have?", answerValue: 250000, unit: "receptors", category: "nature" },
+  { prompt: "How long can a Greenland shark live?", answerValue: 400, unit: "years", category: "nature" },
+  { prompt: "How long can a bristlecone pine live?", answerValue: 5000, unit: "years", category: "nature" },
+  { prompt: "How long can a giant tortoise live?", answerValue: 150, unit: "years", category: "nature" },
+  { prompt: "How many spores does a single mushroom release?", answerValue: 1.6e10, unit: "spores", category: "nature" },
+  { prompt: "How many pollen grains does one ragweed plant release?", answerValue: 1e9, unit: "grains", category: "nature" },
+  { prompt: "How many chickens are alive on Earth right now?", answerValue: 2.6e10, unit: "chickens", category: "nature" },
+  { prompt: "How many cattle are alive on Earth right now?", answerValue: 1e9, unit: "cattle", category: "nature" },
+  { prompt: "How many blue whales are left in the ocean?", answerValue: 15000, unit: "whales", category: "nature" },
+  { prompt: "How many emperor penguins are there?", answerValue: 600000, unit: "penguins", category: "nature" },
+  { prompt: "How much krill does a blue whale eat in a day?", answerValue: 3600, unit: "kilograms", category: "nature" },
+  { prompt: "How much milk does a dairy cow give in a year?", answerValue: 10000, unit: "litres", category: "nature" },
+  { prompt: "How heavy was the largest pumpkin ever grown?", answerValue: 1200, unit: "kilograms", category: "nature" }
+];
+
+/* ---------------- the Size it up bank ---------------- */
+// Flat silhouettes, one per object. Each viewBox sets the drawing's natural
+// proportions, which is where the on-screen aspect ratio comes from.
+const ART = {
+  mouse: { vb: "0 0 104 50", svg: '<ellipse cx="44" cy="32" rx="38" ry="17"/><circle cx="80" cy="34" r="14"/><path d="M91,27 L104,34 L91,41 Z"/><circle cx="73" cy="15" r="11"/><path d="M9,29 C-2,22 3,8 16,9" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>' },
+  pin: { vb: "0 0 34 100", svg: '<path d="M17,1 C23,1 27,6 27,12 C27,18 23,22 22,27 C21,33 25,37 29,45 C32,53 33,62 33,71 C33,87 26,99 17,99 C8,99 1,87 1,71 C1,62 2,53 5,45 C9,37 13,33 12,27 C11,22 7,18 7,12 C7,6 11,1 17,1 Z"/>' },
+  chicken: { vb: "0 0 86 100", svg: '<path d="M30,100 L28,84 M52,100 L54,84" stroke="currentColor" stroke-width="5"/><path d="M18,58 C18,38 34,26 52,28 C68,30 78,44 76,60 C74,78 60,88 42,88 C26,88 18,74 18,58 Z"/><path d="M46,34 C42,20 48,10 58,10 C68,10 74,18 72,28 C70,36 62,40 54,38 Z"/><path d="M56,4 C60,0 66,2 64,8 C70,4 76,8 72,14 C68,18 60,16 58,12 Z"/><path d="M72,20 L86,25 L72,30 Z"/><path d="M14,54 C4,50 2,62 10,68 C16,72 22,68 22,62 Z"/>' },
+  cat: { vb: "0 0 100 54", svg: '<path d="M22,54 L24,38 M40,54 L40,38 M62,54 L62,38 M76,54 L74,38" stroke="currentColor" stroke-width="5"/><path d="M18,42 C14,30 22,22 38,22 L66,22 C78,22 84,28 84,36 L84,44 C84,48 80,50 76,48 L74,40 L26,40 L24,48 C22,51 18,49 18,42 Z"/><path d="M72,26 C72,12 80,6 88,8 C96,10 98,20 92,26 C88,30 80,30 72,26 Z"/><path d="M78,10 L74,0 L84,6 Z M90,10 L96,2 L96,12 Z"/><path d="M18,38 C6,36 2,22 8,12" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>' },
+  skateboard: { vb: "0 0 100 24", svg: '<path d="M4,10 C0,4 6,0 12,4 L22,10 L78,10 L88,4 C94,0 100,4 96,10 C94,14 88,16 80,16 L20,16 C12,16 6,14 4,10 Z"/><circle cx="26" cy="20" r="4"/><circle cx="74" cy="20" r="4"/>' },
+  guitar: { vb: "0 0 40 100", svg: '<path d="M20,52 C31,52 38,62 38,74 C38,88 30,98 20,98 C10,98 2,88 2,74 C2,62 9,52 20,52 Z"/><path d="M20,34 C27,34 32,40 32,48 C32,56 27,60 20,60 C13,60 8,56 8,48 C8,40 13,34 20,34 Z"/><rect x="16" y="12" width="8" height="34"/><path d="M14,2 L26,2 L27,14 L13,14 Z"/><circle cx="20" cy="72" r="6" fill="#0f1219"/>' },
+  dog: { vb: "0 0 100 62", svg: '<path d="M24,62 L26,42 M42,62 L42,42 M66,62 L66,42 M82,62 L80,42" stroke="currentColor" stroke-width="6"/><path d="M20,44 C16,30 24,22 42,22 L68,22 C80,22 86,28 86,38 L86,46 C86,50 82,52 78,50 L76,42 L28,42 L26,50 C24,53 20,51 20,44 Z"/><path d="M76,28 C76,14 84,6 92,8 C99,10 100,20 96,28 C92,34 82,34 76,28 Z"/><path d="M96,20 L100,24 L94,26 Z"/><path d="M78,12 C72,10 70,22 76,28 C80,30 82,20 78,12 Z"/><path d="M20,40 C10,34 8,22 14,14" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>' },
+  wolf: { vb: "0 0 100 60", svg: '<path d="M24,60 L26,40 M42,60 L42,40 M66,60 L66,40 M82,60 L80,40" stroke="currentColor" stroke-width="6"/><path d="M18,42 C14,28 24,20 42,20 L70,20 C82,20 88,26 88,36 L88,44 C88,48 84,50 80,48 L78,40 L26,40 L24,48 C22,51 18,49 18,42 Z"/><path d="M78,26 C76,14 84,8 92,10 L100,22 L92,32 C84,34 79,32 78,26 Z"/><path d="M82,10 L80,0 L88,8 Z M92,10 L96,2 L97,12 Z"/><path d="M18,38 C8,30 8,18 16,10" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>' },
+  penguin: { vb: "0 0 46 100", svg: '<path d="M23,4 C33,4 40,12 40,22 C40,28 38,32 36,35 C42,42 45,54 45,68 C45,84 36,96 23,96 C10,96 1,84 1,68 C1,54 4,42 10,35 C8,32 6,28 6,22 C6,12 13,4 23,4 Z"/><path d="M38,20 L46,24 L38,27 Z"/><path d="M6,96 L2,100 L18,100 Z M40,96 L44,100 L28,100 Z"/><path d="M8,44 C2,54 3,70 8,78 Z M38,44 C44,54 43,70 38,78 Z"/>' },
+  kangaroo: { vb: "0 0 80 100", svg: '<path d="M30,44 C30,28 40,20 52,22 C62,24 66,34 62,44 C58,54 60,62 56,72 C52,82 40,88 28,88 L14,88 C6,88 2,82 6,76 L22,58 C26,52 30,50 30,44 Z"/><path d="M50,26 C46,12 52,4 60,4 C68,4 72,12 70,20 C68,26 60,30 52,28 Z"/><path d="M58,6 L54,0 L62,2 Z M68,6 L74,0 L72,10 Z"/><path d="M70,16 L80,18 L70,22 Z"/><path d="M22,80 L6,88 L4,96 L34,96 L34,86 Z"/><path d="M56,70 C68,74 78,86 76,96 L66,94 C66,86 60,78 52,76 Z"/>' },
+  fridge: { vb: "0 0 42 100", svg: '<rect x="1" y="1" width="40" height="98" rx="4"/><rect x="1" y="34" width="40" height="3" fill="#0f1219"/><rect x="32" y="12" width="3" height="16" rx="1.5" fill="#0f1219"/><rect x="32" y="44" width="3" height="16" rx="1.5" fill="#0f1219"/>' },
+  door: { vb: "0 0 42 100", svg: '<rect x="1" y="1" width="40" height="99" rx="3"/><circle cx="33" cy="54" r="3" fill="#0f1219"/><rect x="8" y="10" width="26" height="26" rx="2" fill="#0f1219"/><rect x="8" y="64" width="26" height="26" rx="2" fill="#0f1219"/>' },
+  ostrich: { vb: "0 0 62 100", svg: '<path d="M22,100 L24,72 M38,100 L36,72" stroke="currentColor" stroke-width="5"/><path d="M12,58 C12,44 22,36 34,36 C48,36 58,46 58,60 C58,74 48,82 34,82 C20,82 12,72 12,58 Z"/><path d="M30,40 C26,26 24,14 26,6" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M20,8 C20,2 26,0 30,2 C35,4 35,12 30,14 C25,16 20,13 20,8 Z"/><path d="M32,6 L42,8 L32,12 Z"/><path d="M10,52 C0,50 0,66 8,70 Z"/>' },
+  piano: { vb: "0 0 100 76", svg: '<path d="M18,2 L56,2 C82,2 98,20 98,42 C98,62 82,74 62,74 L18,74 Z"/><rect x="2" y="2" width="18" height="72" rx="2"/><path d="M2,10 L20,10 M2,18 L20,18 M2,26 L20,26 M2,34 L20,34 M2,42 L20,42 M2,50 L20,50 M2,58 L20,58 M2,66 L20,66" stroke="#0f1219" stroke-width="2"/>' },
+  polarBear: { vb: "0 0 58 100", svg: '<path d="M18,100 L20,70 M40,100 L38,70" stroke="currentColor" stroke-width="9"/><path d="M12,40 C12,26 20,18 30,18 C42,18 50,28 50,42 L50,62 C50,74 42,80 30,80 C18,80 12,72 12,60 Z"/><path d="M22,22 C18,8 24,0 33,0 C42,0 48,8 45,18 C43,24 34,28 26,26 Z"/><path d="M24,2 C18,0 16,8 22,10 Z M42,2 C48,0 50,8 44,10 Z"/><path d="M45,10 L54,12 L46,17 Z"/><path d="M12,44 C2,44 0,58 8,62 Z"/>' },
+  hoop: { vb: "0 0 50 100", svg: '<rect x="20" y="14" width="8" height="86"/><rect x="8" y="0" width="34" height="26" rx="2"/><rect x="16" y="8" width="18" height="12" fill="#0f1219"/><path d="M12,26 L12,32 L38,32 L38,26" fill="none" stroke="currentColor" stroke-width="4"/><path d="M14,32 L18,42 L32,42 L36,32" fill="none" stroke="currentColor" stroke-width="3"/>' },
+  elephant: { vb: "0 0 100 76", svg: '<path d="M22,76 L24,50 M44,76 L44,50 M66,76 L66,50 M84,76 L82,50" stroke="currentColor" stroke-width="11"/><path d="M14,40 C14,22 28,12 48,12 L64,12 C80,12 88,22 88,38 L88,52 C88,58 82,60 78,56 L76,50 L24,50 L22,56 C18,60 14,56 14,48 Z"/><path d="M76,16 C74,6 82,0 90,2 C98,4 100,14 96,22 L92,44 C92,50 86,52 84,46 L84,26 C80,26 76,22 76,16 Z"/><path d="M72,14 C62,12 58,28 68,36 C76,42 82,30 78,18 Z"/><path d="M14,36 C4,34 2,46 10,50 Z"/>' },
+  busDD: { vb: "0 0 52 100", svg: '<rect x="1" y="4" width="50" height="86" rx="6"/><rect x="6" y="12" width="18" height="16" rx="2" fill="#0f1219"/><rect x="28" y="12" width="18" height="16" rx="2" fill="#0f1219"/><rect x="6" y="42" width="18" height="16" rx="2" fill="#0f1219"/><rect x="28" y="42" width="18" height="16" rx="2" fill="#0f1219"/><rect x="6" y="66" width="14" height="18" rx="2" fill="#0f1219"/><circle cx="14" cy="92" r="8"/><circle cx="40" cy="92" r="8"/>' },
+  shark: { vb: "0 0 100 42", svg: '<path d="M2,20 L18,8 L20,18 C28,10 44,6 60,8 C76,10 90,16 98,22 C90,28 76,34 60,36 C44,38 28,34 20,26 L18,36 Z"/><path d="M52,8 L58,0 L64,10 Z"/><path d="M46,34 L48,42 L56,34 Z"/><circle cx="88" cy="20" r="2" fill="#0f1219"/>' },
+  giraffe: { vb: "0 0 62 100", svg: '<path d="M14,100 L16,62 M30,100 L30,62 M44,100 L44,62 M54,100 L52,62" stroke="currentColor" stroke-width="6"/><path d="M8,52 C8,40 18,34 32,34 L46,34 C56,34 60,42 60,52 L60,60 C60,66 54,66 52,62 L14,62 C10,66 8,62 8,54 Z"/><path d="M40,36 C36,24 34,12 36,4" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><path d="M28,4 C28,0 34,0 38,1 L48,4 L40,10 C34,12 28,9 28,4 Z"/><path d="M32,2 L30,0 M40,2 L42,0" stroke="currentColor" stroke-width="3"/><path d="M8,50 C0,48 0,60 6,62 Z"/>' },
+  stonehenge: { vb: "0 0 76 100", svg: '<rect x="4" y="18" width="18" height="82" rx="2"/><rect x="54" y="18" width="18" height="82" rx="2"/><rect x="0" y="0" width="76" height="16" rx="2"/>' },
+  house: { vb: "0 0 100 78", svg: '<path d="M50,2 L98,34 L92,34 L92,78 L8,78 L8,34 L2,34 Z"/><rect x="20" y="44" width="18" height="18" fill="#0f1219"/><rect x="62" y="44" width="18" height="18" fill="#0f1219"/><rect x="42" y="52" width="16" height="26" fill="#0f1219"/>' },
+  schoolBus: { vb: "0 0 100 34", svg: '<path d="M2,10 C2,6 5,4 9,4 L74,4 C84,4 92,10 96,18 L98,26 C98,29 96,30 93,30 L6,30 C3,30 2,29 2,26 Z"/><rect x="10" y="9" width="14" height="10" rx="2" fill="#0f1219"/><rect x="28" y="9" width="14" height="10" rx="2" fill="#0f1219"/><rect x="46" y="9" width="14" height="10" rx="2" fill="#0f1219"/><rect x="66" y="9" width="12" height="10" rx="2" fill="#0f1219"/><circle cx="22" cy="30" r="5"/><circle cx="80" cy="30" r="5"/>' },
+  container: { vb: "0 0 100 42", svg: '<rect x="1" y="2" width="98" height="38" rx="2"/><path d="M10,2 L10,40 M22,2 L22,40 M34,2 L34,40 M46,2 L46,40 M58,2 L58,40 M70,2 L70,40 M82,2 L82,40 M90,2 L90,40" stroke="#0f1219" stroke-width="3"/>' },
+  pole: { vb: "0 0 30 100", svg: '<rect x="12" y="6" width="6" height="94"/><rect x="0" y="10" width="30" height="4" rx="2"/><rect x="3" y="22" width="24" height="4" rx="2"/><circle cx="4" cy="8" r="2"/><circle cx="26" cy="8" r="2"/>' },
+  trex: { vb: "0 0 110 82", svg: '<path d="M4,30 L30,40 L30,54 L6,38 Z"/><ellipse cx="46" cy="44" rx="25" ry="17"/><path d="M58,36 C60,23 69,15 80,12 L88,25 C77,29 71,35 67,45 Z"/><path d="M76,9 L107,19 L107,27 L72,27 Z"/><path d="M76,31 L105,32 L105,38 L78,35 Z"/><circle cx="92" cy="20" r="2.6" fill="#0f1219"/><path d="M43,58 L57,55 L59,70 L51,82 L40,82 L44,68 Z"/><path d="M63,44 L74,49 L71,55 L60,48 Z"/>' },
+  brachio: { vb: "0 0 84 100", svg: '<path d="M20,72 C20,58 30,50 44,50 L58,50 C70,50 76,58 76,70 C76,82 68,88 54,88 L38,88 C26,88 20,82 20,72 Z"/><path d="M52,52 C44,40 40,24 44,10" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round"/><path d="M36,8 C36,2 44,0 50,3 L58,8 L48,14 C40,16 36,13 36,8 Z"/><path d="M20,70 C10,68 4,80 2,92" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><path d="M30,88 L28,100 M46,88 L46,100 M62,88 L64,100" stroke="currentColor" stroke-width="9"/>' },
+  mast: { vb: "0 0 20 100", svg: '<rect x="7" y="0" width="6" height="100" rx="2"/><rect x="0" y="30" width="20" height="3" rx="1.5"/>' },
+  court: { vb: "0 0 100 46", svg: '<rect x="1" y="1" width="98" height="44" rx="1"/><rect x="6" y="6" width="88" height="34" fill="#0f1219"/><path d="M50,1 L50,45" stroke="currentColor" stroke-width="3"/><path d="M22,6 L22,40 M78,6 L78,40 M22,23 L78,23" stroke="currentColor" stroke-width="2"/>' },
+  whale: { vb: "0 0 100 42", svg: '<path d="M97,17 C88,7 68,3 44,5 C26,7 13,11 7,15 L15,21 L7,27 C13,31 26,35 44,37 C68,39 88,31 97,23 Z"/><path d="M7,15 C1,9 0,4 2,0 L16,15 Z"/><path d="M7,27 C1,33 0,38 2,42 L16,27 Z"/><path d="M26,7 L31,0 L35,8 Z"/><path d="M56,34 L54,42 L66,35 Z"/><path d="M74,29 C84,28 91,25 96,22" fill="none" stroke="#0f1219" stroke-width="2"/><circle cx="82" cy="17" r="2" fill="#0f1219"/>' },
+  redeemer: { vb: "0 0 84 100", svg: '<rect x="34" y="86" width="16" height="14"/><rect x="30" y="76" width="24" height="12" rx="2"/><path d="M42,22 C48,22 52,28 52,36 L52,74 L32,74 L32,36 C32,28 36,22 42,22 Z"/><rect x="2" y="30" width="80" height="10" rx="4"/><circle cx="42" cy="12" r="10"/>' },
+  plane: { vb: "0 0 100 32", svg: '<path d="M6,18 C6,13 12,10 22,10 L76,10 C86,10 94,13 96,17 C97,19 96,21 92,21 L20,22 C10,22 6,21 6,18 Z"/><path d="M40,11 L28,0 L38,0 L54,11 Z"/><path d="M44,21 L34,32 L44,32 L58,21 Z"/><path d="M8,10 L2,2 L10,2 L16,10 Z"/><circle cx="52" cy="24" r="4"/><circle cx="66" cy="24" r="4"/>' },
+  planeBig: { vb: "0 0 100 32", svg: '<path d="M4,17 C4,11 10,7 22,7 L74,7 C86,7 94,11 96,16 C97,19 95,21 90,21 L18,22 C8,22 4,21 4,17 Z"/><path d="M40,8 L26,0 L36,0 L54,8 Z"/><path d="M44,21 L32,32 L42,32 L58,21 Z"/><path d="M6,8 L0,0 L8,0 L14,8 Z"/><circle cx="44" cy="24" r="4"/><circle cx="56" cy="24" r="4"/><circle cx="68" cy="24" r="4"/><circle cx="80" cy="24" r="4"/>' },
+  shuttle: { vb: "0 0 34 100", svg: '<path d="M17,0 C22,0 25,8 25,18 L25,92 L9,92 L9,18 C9,8 12,0 17,0 Z"/><rect x="0" y="26" width="8" height="70" rx="4"/><rect x="26" y="26" width="8" height="70" rx="4"/><path d="M9,70 L2,92 L9,92 Z M25,70 L32,92 L25,92 Z"/><path d="M12,92 L10,100 L24,100 L22,92 Z"/>' },
+  opera: { vb: "0 0 100 40", svg: '<path d="M2,40 C14,40 20,20 34,20 C44,20 48,32 48,40 Z"/><path d="M28,40 C40,38 46,14 60,14 C72,14 76,30 76,40 Z"/><path d="M54,40 C66,38 72,4 86,4 C96,4 98,26 98,40 Z"/><rect x="0" y="38" width="100" height="2"/>' },
+  blade: { vb: "0 0 26 100", svg: '<path d="M13,0 C18,0 22,8 23,24 L25,86 C25,94 20,100 13,100 C6,100 1,94 1,86 L3,24 C4,8 8,0 13,0 Z"/>' },
+  liberty: { vb: "0 0 46 100", svg: '<rect x="10" y="76" width="26" height="24"/><rect x="6" y="66" width="34" height="12" rx="2"/><path d="M23,26 C29,26 33,32 33,40 L35,64 L11,64 L13,40 C13,32 17,26 23,26 Z"/><circle cx="23" cy="16" r="8"/><path d="M15,10 L11,2 M23,7 L23,0 M31,10 L35,2" stroke="currentColor" stroke-width="3"/><path d="M31,28 L38,10 L42,12 L36,30 Z"/><path d="M36,4 L44,8 L38,14 Z"/>' },
+  bigBen: { vb: "0 0 30 100", svg: '<path d="M15,0 L21,16 L9,16 Z"/><rect x="8" y="16" width="14" height="10"/><rect x="5" y="26" width="20" height="18" rx="2"/><circle cx="15" cy="35" r="6" fill="#0f1219"/><rect x="7" y="44" width="16" height="56"/><path d="M9,50 L9,96 M15,50 L15,96 M21,50 L21,96" stroke="#0f1219" stroke-width="2"/>' },
+  redwood: { vb: "0 0 44 100", svg: '<rect x="17" y="60" width="10" height="40"/><path d="M22,0 C28,10 32,20 34,30 C30,29 26,30 22,32 C18,30 14,29 10,30 C12,20 16,10 22,0 Z"/><path d="M22,22 C30,32 36,44 38,56 C32,53 26,54 22,58 C18,54 12,53 6,56 C8,44 14,32 22,22 Z"/><path d="M22,44 C31,56 38,68 40,80 C33,75 26,76 22,82 C18,76 11,75 4,80 C6,68 13,56 22,44 Z"/>' },
+  pitch: { vb: "0 0 100 62", svg: '<rect x="1" y="1" width="98" height="60" rx="1"/><rect x="5" y="5" width="90" height="52" fill="#0f1219"/><path d="M50,1 L50,61" stroke="currentColor" stroke-width="3"/><circle cx="50" cy="31" r="10" fill="none" stroke="currentColor" stroke-width="3"/><path d="M5,18 L18,18 L18,44 L5,44 M95,18 L82,18 L82,44 L95,44" fill="none" stroke="currentColor" stroke-width="3"/>' },
+  saturn: { vb: "0 0 24 100", svg: '<path d="M12,0 C16,4 18,12 18,20 L18,40 L6,40 L6,20 C6,12 8,4 12,0 Z"/><rect x="5" y="40" width="14" height="26"/><rect x="4" y="66" width="16" height="26"/><path d="M4,92 L0,100 L24,100 L20,92 Z"/><path d="M6,44 L18,44 M5,68 L19,68" stroke="#0f1219" stroke-width="2"/>' },
+  pyramid: { vb: "0 0 100 64", svg: '<path d="M50,0 L100,64 L0,64 Z"/><path d="M50,0 L50,64" stroke="#0f1219" stroke-width="2"/>' },
+  monument: { vb: "0 0 22 100", svg: '<path d="M11,0 L16,14 L6,14 Z"/><path d="M7,14 L15,14 L17,100 L5,100 Z"/>' },
+  ggTower: { vb: "0 0 34 100", svg: '<path d="M6,10 L28,10 L30,100 L24,100 L23,20 L11,20 L10,100 L4,100 Z"/><rect x="4" y="0" width="26" height="8" rx="2"/><rect x="8" y="34" width="18" height="6"/><rect x="7" y="60" width="20" height="6"/><rect x="6" y="86" width="22" height="6"/>' },
+  titanic: { vb: "0 0 100 40", svg: '<path d="M2,26 L98,26 L92,38 C90,39 12,39 10,38 Z"/><rect x="14" y="18" width="70" height="9" rx="2"/><rect x="26" y="12" width="46" height="7" rx="2"/><rect x="32" y="0" width="5" height="13"/><rect x="44" y="0" width="5" height="13"/><rect x="56" y="0" width="5" height="13"/><rect x="68" y="0" width="5" height="13"/>' },
+  eiffel: { vb: "0 0 60 100", svg: '<path d="M30,0 L33,14 L27,14 Z"/><path d="M27,14 L33,14 L36,40 L24,40 Z"/><path d="M24,40 L36,40 L44,72 L16,72 Z"/><path d="M16,72 L44,72 L58,100 L44,100 L36,80 L24,80 L16,100 L2,100 Z"/><rect x="20" y="52" width="20" height="4" fill="#0f1219"/><rect x="12" y="72" width="36" height="4" fill="#0f1219"/>' },
+  carrier: { vb: "0 0 100 34", svg: '<path d="M2,20 L98,20 L92,32 C90,33 12,33 10,32 Z"/><rect x="4" y="14" width="94" height="7" rx="1"/><rect x="60" y="2" width="12" height="13" rx="1"/><rect x="63" y="0" width="2" height="6"/><path d="M14,17 L86,17" stroke="#0f1219" stroke-width="2" stroke-dasharray="6 5"/>' },
+  crane: { vb: "0 0 100 100", svg: '<rect x="44" y="10" width="8" height="90"/><rect x="4" y="6" width="92" height="7" rx="2"/><rect x="20" y="13" width="4" height="26"/><rect x="10" y="36" width="24" height="8" rx="2"/>' }
+};
+
+// Objects keep the {prompt, answerValue, unit, category} shape of a question,
+// with answerValue in metres. `unit` says which axis was measured, and `ratio`
+// (width/height in reality) overrides the drawing's own proportions where the
+// silhouette is stylised more than the real thing.
+const OBJECTS = [
+  { prompt: "a house mouse", answerValue: 0.09, unit: "metres long", art: "mouse" },
+  { prompt: "a bowling pin", answerValue: 0.38, unit: "metres tall", art: "pin" },
+  { prompt: "a chicken", answerValue: 0.4, unit: "metres tall", art: "chicken" },
+  { prompt: "a skateboard", answerValue: 0.8, unit: "metres long", art: "skateboard", ratio: 6 },
+  { prompt: "a cat, nose to tail", answerValue: 0.76, unit: "metres long", art: "cat", ratio: 2.5 },
+  { prompt: "an acoustic guitar", answerValue: 1.0, unit: "metres tall", art: "guitar" },
+  { prompt: "a golden retriever, nose to tail", answerValue: 1.1, unit: "metres long", art: "dog" },
+  { prompt: "an emperor penguin", answerValue: 1.15, unit: "metres tall", art: "penguin" },
+  { prompt: "a grey wolf, nose to tail", answerValue: 1.5, unit: "metres long", art: "wolf" },
+  { prompt: "a red kangaroo", answerValue: 1.6, unit: "metres tall", art: "kangaroo" },
+  { prompt: "a kitchen refrigerator", answerValue: 1.8, unit: "metres tall", art: "fridge" },
+  { prompt: "a front door", answerValue: 2.0, unit: "metres tall", art: "door" },
+  { prompt: "an ostrich", answerValue: 2.5, unit: "metres tall", art: "ostrich" },
+  { prompt: "a grand piano", answerValue: 2.7, unit: "metres long", art: "piano", ratio: 1.8 },
+  { prompt: "a polar bear standing up", answerValue: 3.0, unit: "metres tall", art: "polarBear" },
+  { prompt: "a basketball hoop", answerValue: 3.05, unit: "metres tall", art: "hoop" },
+  { prompt: "an African elephant at the shoulder", answerValue: 3.3, unit: "metres tall", art: "elephant", ratio: 1.8 },
+  { prompt: "a London double-decker bus", answerValue: 4.4, unit: "metres tall", art: "busDD" },
+  { prompt: "a great white shark", answerValue: 5.0, unit: "metres long", art: "shark", ratio: 4.2 },
+  { prompt: "a giraffe", answerValue: 5.5, unit: "metres tall", art: "giraffe" },
+  { prompt: "a Stonehenge trilithon", answerValue: 7.0, unit: "metres tall", art: "stonehenge" },
+  { prompt: "a two-storey house", answerValue: 8.0, unit: "metres tall", art: "house" },
+  { prompt: "a school bus", answerValue: 11, unit: "metres long", art: "schoolBus", ratio: 3.7 },
+  { prompt: "a shipping container", answerValue: 12, unit: "metres long", art: "container", ratio: 4.6 },
+  { prompt: "a telephone pole", answerValue: 12, unit: "metres tall", art: "pole" },
+  { prompt: "a Tyrannosaurus rex", answerValue: 12, unit: "metres long", art: "trex", ratio: 2.4 },
+  { prompt: "a Brachiosaurus", answerValue: 13, unit: "metres tall", art: "brachio" },
+  { prompt: "a yacht's mast", answerValue: 20, unit: "metres tall", art: "mast" },
+  { prompt: "a tennis court", answerValue: 24, unit: "metres long", art: "court", ratio: 2.2 },
+  { prompt: "a blue whale", answerValue: 30, unit: "metres long", art: "whale", ratio: 7.5 },
+  { prompt: "the Christ the Redeemer statue", answerValue: 30, unit: "metres tall", art: "redeemer" },
+  { prompt: "a Boeing 737", answerValue: 39, unit: "metres long", art: "plane", ratio: 3.3 },
+  { prompt: "the Space Shuttle on its launch stack", answerValue: 56, unit: "metres tall", art: "shuttle" },
+  { prompt: "the Sydney Opera House", answerValue: 65, unit: "metres tall", art: "opera", ratio: 2.8 },
+  { prompt: "an Airbus A380", answerValue: 73, unit: "metres long", art: "planeBig", ratio: 3.0 },
+  { prompt: "a wind turbine blade", answerValue: 80, unit: "metres tall", art: "blade" },
+  { prompt: "the Statue of Liberty, pedestal included", answerValue: 93, unit: "metres tall", art: "liberty" },
+  { prompt: "the Big Ben clock tower", answerValue: 96, unit: "metres tall", art: "bigBen" },
+  { prompt: "a coast redwood", answerValue: 100, unit: "metres tall", art: "redwood" },
+  { prompt: "a football pitch", answerValue: 105, unit: "metres long", art: "pitch", ratio: 1.55 },
+  { prompt: "a Saturn V rocket", answerValue: 111, unit: "metres tall", art: "saturn" },
+  { prompt: "the Great Pyramid of Giza", answerValue: 139, unit: "metres tall", art: "pyramid", ratio: 1.65 },
+  { prompt: "the Washington Monument", answerValue: 169, unit: "metres tall", art: "monument" },
+  { prompt: "a Golden Gate Bridge tower", answerValue: 227, unit: "metres tall", art: "ggTower" },
+  { prompt: "the Titanic", answerValue: 269, unit: "metres long", art: "titanic", ratio: 5.1 },
+  { prompt: "the Eiffel Tower", answerValue: 330, unit: "metres tall", art: "eiffel" },
+  { prompt: "a Nimitz-class aircraft carrier", answerValue: 333, unit: "metres long", art: "carrier", ratio: 4.4 }
+].map(o => ({ ...o, category: "sizes", long: o.unit.includes("long") }));
+
+/* ---------------- constants & helpers ---------------- */
+const MIN_LOG = 0, MAX_LOG = 12;      // 1 … 1,000,000,000,000
+const THUMB = 26;                     // px, keeps markers/ticks aligned with the knob
+const STORE = "magniguess.best.";
+
+// Every mode is the same game with different dials: how many lives you get,
+// how much slack counts as surviving a question, and whether a clock is running.
+const MODES = {
+  survival: {
+    name: "Survival", icon: "\u{1FAC0}",
+    blurb: "Three lives, the whole bank, shuffled fresh every run.",
+    lives: 3, goodErr: 1.5, seconds: 0
+  },
+  daily: {
+    name: "Daily", icon: "\u{1F4C5}",
+    blurb: "One shuffle per day — everyone plays the same order.",
+    lives: 3, goodErr: 1.5, seconds: 0, fixedSeed: true, allCats: true
+  },
+  sprint: {
+    name: "Time attack", icon: "\u{23F1}\u{FE0F}",
+    blurb: "Ninety seconds, no lives, no time to think twice.",
+    lives: Infinity, goodErr: 1.5, seconds: 90
+  },
+  sudden: {
+    name: "Sudden death", icon: "\u{1F480}",
+    blurb: "One life, and only one order of magnitude of slack.",
+    lives: 1, goodErr: 1.0, seconds: 0
+  },
+  sizeit: {
+    name: "Size it up", icon: "\u{1F4CF}",
+    blurb: "No numbers — stretch the shape until it matches, next to a 1.7 m human.",
+    lives: 3, goodErr: 1.5, seconds: 0, bank: "objects", allCats: true
+  },
+  online: {
+    name: "Play online", icon: "\u{1F310}",
+    blurb: "A room code, your friends on their own phones, everyone guessing at once.",
+    lives: Infinity, goodErr: 1.5, seconds: 0, online: true, allCats: true, noScore: true
+  },
+  party: {
+    name: "Pass and play", icon: "\u{1F465}",
+    blurb: "Two to four players, one device, taken in turns. Highest total wins.",
+    lives: Infinity, goodErr: 1.5, seconds: 0, local: true, noScore: true
+  },
+  practice: {
+    name: "Practice", icon: "\u{1F3AF}",
+    blurb: "No lives, no clock, no game over — learn the scale at your own pace.",
+    lives: Infinity, goodErr: 1.5, seconds: 0, endless: true, noScore: true
+  }
+};
+const CATEGORIES = ["science", "geography", "history", "pop culture", "nature"];
+
+const cfg = () => MODES[mode];
+
+// Lifetime accuracy, kept per category. The hit threshold is deliberately a
+// constant rather than the mode's own slack, so a Sudden Death answer and a
+// Practice answer still mean the same thing in the totals.
+const STAT_HIT = 1.5;
+const STATS_KEY = "magniguess.stats";
+
+function loadStats() {
+  try {
+    const raw = JSON.parse(safeGet(STATS_KEY) || "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch (e) { return {}; }
+}
+
+function recordAnswer(cat, points, err) {
+  const st = loadStats();
+  const c = st[cat] || (st[cat] = { n: 0, points: 0, hits: 0, sumErr: 0 });
+  c.n++; c.points += points; c.sumErr += err;
+  if (err <= STAT_HIT) c.hits++;
+  safeSet(STATS_KEY, JSON.stringify(st));
+  return st;
+}
+const inPlay = (q) => category === "all" || q.category === category;
+// Daily and Size it up ignore the filter, so they must not claim one either.
+const catSuffix = () => (cfg().allCats || category === "all") ? "" : ` \u00B7 ${category}`;
+const bestKey = (m = mode, c = category) =>
+  STORE + m + "." + (MODES[m].allCats ? "all" : c) + (MODES[m].fixedSeed ? "." + todayKey() : "");
+
+function modeMeta(m) {
+  const c = MODES[m];
+  if (c.online) return "room code \u00B7 up to 6 players";
+  if (c.local) return "2\u20134 players \u00B7 one device";
+  if (c.endless) return "endless \u00B7 nothing to lose";
+  const life = c.lives === Infinity ? "no lives" : c.lives === 1 ? "1 life" : `${c.lives} lives`;
+  return [c.seconds ? `${c.seconds}s` : null, life, `${c.goodErr.toFixed(1)} OOM slack`]
+    .filter(Boolean).join(" \u00B7 ");
+}
+
+// Private browsing, file:// and sandboxed origins can make localStorage throw
+// on plain access, so every read and write goes through these.
+const safeGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+// Position along the track, matching where the range thumb's centre actually sits.
+const posFor = (logV) => {
+  const p = clamp((logV - MIN_LOG) / (MAX_LOG - MIN_LOG), 0, 1);
+  return `calc(${(p * 100).toFixed(3)}% + ${((0.5 - p) * THUMB).toFixed(2)}px)`;
+};
+
+const SCALES = [
+  [1e12, "trillion"], [1e9, "billion"], [1e6, "million"], [1e3, "thousand"]
+];
+
+// "3.8 million", "12 thousand", "206"
+function words(v) {
+  for (const [size, name] of SCALES) {
+    if (v >= size * 0.999) {
+      const n = v / size;
+      const d = n < 10 ? (Math.round(n * 10) / 10) : Math.round(n);
+      return `${d.toLocaleString("en-US")} ${name}`;
+    }
+  }
+  return (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10).toLocaleString("en-US");
+}
+
+// Compact axis label: 1, 100, 10K, 1M, 100M, 10B, 1T
+function tickLabel(exp) {
+  const units = [[12, "T"], [9, "B"], [6, "M"], [3, "K"]];
+  for (const [e, s] of units) if (exp >= e) return `${10 ** (exp - e)}${s}`;
+  return String(10 ** exp);
+}
+
+// Exact digits, for the reveal line: 384,400
+const exact = (v) => Math.round(v).toLocaleString("en-US");
+
+/* ---------------- shuffling ---------------- */
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffled(list, rand) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+const todayKey = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
+
+// FNV-1a over any string. Daily feeds it the date; a challenge link feeds it
+// a shared code. Same string in, same deck out, with no server involved.
+const hashSeed = (s) => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+};
+
+/* ---------------- state ---------------- */
+let mode = "survival";
+let category = "all";
+let deck = [], idx = 0, lives = 3, score = 0, streak = 0, bestStreak = 0;
+let results = [];        // { q, guess, err, points, lostLife }
+let phase = "guessing";  // guessing | loading | revealed | over
+let timeLeft = 0, timerId = null;
+let challengeSeed = null;   // a shared code; overrides the random shuffle while set
+let bullStreak = 0;         // consecutive bullseyes, for the badge of the same name
+
+// Pass and play. Everyone answers the same question before anything is revealed.
+const PLAYER_COLOURS = ["#7dd3fc", "#f0abfc", "#bef264", "#fdba74"];
+const DEFAULT_NAMES = ["Player 1", "Player 2", "Player 3", "Player 4"];
+let players = [];          // [{ name, colour, score, hits }]
+let turn = 0;              // whose guess we are taking
+let round = 0;
+let partyRounds = 10;
+let roundGuesses = [];     // this question's guesses, in turn order
+
+/* ---------------- build the axis once ---------------- */
+(function buildTicks() {
+  const box = $("ticks");
+  for (let e = MIN_LOG; e <= MAX_LOG; e++) {
+    const major = e % 2 === 0;
+    const t = document.createElement("div");
+    t.className = "tick " + (major ? "major" : "minor");
+    t.style.left = posFor(e);
+    t.innerHTML = `<i></i><b>${tickLabel(e)}</b>`;
+    box.appendChild(t);
+  }
+})();
+
+/* ---------------- the Size it up scene ---------------- */
+const HUMAN_M = 1.7;        // the fixed reference, always on the ground line
+const SCENE_FILL = 0.8;     // how much of the canvas the tallest thing should take
+const MIN_PX = 3;           // below this a shape becomes a tick mark
+const MAX_PPM = 4000;       // stops a lone small object zooming in absurdly far
+const HUMAN_W = 0.41;       // the reference figure's drawn width, in metres
+
+let ppm = 60;               // THE camera: pixels per metre, everything derives from it
+let sizeGuess = HUMAN_M;    // what the handle currently says
+let sizeShown = HUMAN_M;    // what is actually drawn (lerps to the truth on reveal)
+let sizeTruth = 0;          // set at reveal, drives the grow/shrink animation
+let camRaf = 0, camLast = 0;
+
+const HUMAN_SVG = `<svg viewBox="0 0 24 100" preserveAspectRatio="none" width="100%" height="100%" aria-hidden="true">
+  <circle cx="12" cy="9" r="8" fill="#8e9bb0"/>
+  <path d="M12 18c-6 0-9 4-9 10v26h4v46h4V70h2v30h4V54h4V28c0-6-3-10-9-10z" fill="#8e9bb0"/>
+</svg>`;
+
+const metres = (v) => v < 1 ? `${Math.round(v * 100)} cm`
+  : v < 10 ? `${v.toFixed(1)} m`
+  : `${Math.round(v).toLocaleString("en-US")} m`;
+
+// The metres-wide and metres-tall box the subject occupies at a given size.
+// `unit` decides which axis was measured; `ratio` is width/height in reality.
+function boxFor(q, m) {
+  const a = ART[q && q.art] || null;
+  const vb = a ? a.vb.split(" ").map(Number) : [0, 0, 1, 1];
+  const r = (q && q.ratio) || (vb[2] / vb[3]) || 1;
+  return (q && q.long) ? { w: m, h: m / r } : { w: m * r, h: m };
+}
+
+// Where the camera wants to be: the scene has to fit the tallest thing
+// vertically AND both figures side by side horizontally.
+function cameraTarget() {
+  const scene = $("scene");
+  const sh = scene.clientHeight || 240, sw = scene.clientWidth || 320;
+  const box = boxFor(deck[idx], sizeShown);
+  const byHeight = (sh * SCENE_FILL) / Math.max(HUMAN_M, box.h);
+  const byWidth = (sw * 0.72) / Math.max(0.8, box.w + HUMAN_W);
+  return Math.min(MAX_PPM, byHeight, byWidth);
+}
+
+// One frame: ease the camera toward its target, ease the shape toward the truth,
+// then redraw everything from the live ppm. Never snaps.
+function camFrame(t) {
+  // Clamped at BOTH ends. A long pause costs one step rather than a jump, and a
+  // non-monotonic timestamp cannot produce a negative dt — which would turn
+  // (1 - exp(-dt/tau)) into a large negative factor and blow the easing up.
+  const dt = Math.min(64, Math.max(1, camLast ? t - camLast : 16));
+  camLast = t;
+  ppm += (cameraTarget() - ppm) * (1 - Math.exp(-dt / 110));   // ~450ms settle
+  if (sizeTruth) sizeShown += (sizeTruth - sizeShown) * (1 - Math.exp(-dt / 130));
+  ppm = clamp(ppm, 0.0001, MAX_PPM);
+  sizeShown = Math.max(1e-6, sizeShown);
+  paintScene();
+  camRaf = requestAnimationFrame(camFrame);
+}
+
+// Always cancels first: a handle left over from a loop that stopped (a hidden
+// tab defers its callback indefinitely) must never block a restart.
+function startCamera(instant) {
+  stopCamera();
+  if (instant) { ppm = cameraTarget(); paintScene(); }
+  camLast = 0;
+  camRaf = requestAnimationFrame(camFrame);
+}
+
+function stopCamera() {
+  if (camRaf) cancelAnimationFrame(camRaf);
+  camRaf = 0;
+}
+
+function paintScene() {
+  const scene = $("scene");
+  // With no layout (stage hidden, not attached yet) any measurement is a lie,
+  // and writing it would leave stale sizes behind until the next frame.
+  if (!scene.clientWidth || !scene.clientHeight) return;
+  const q = deck[idx];
+
+  const hPx = Math.max(MIN_PX, HUMAN_M * ppm);
+  const human = $("humanBody");
+  human.style.height = `${hPx}px`;
+  human.style.width = `${Math.max(4, HUMAN_W * ppm)}px`;
+
+  const box = boxFor(q, sizeShown);
+  const rawH = box.h * ppm, rawW = box.w * ppm;
+  const tiny = rawH < MIN_PX || rawW < MIN_PX;
+  const shape = $("subjectShape");
+
+  // Below the floor a silhouette is unreadable, so leave a tick mark instead.
+  const artKey = tiny ? "__tick" : (q && q.art);
+  if (shape.dataset.art !== artKey) {
+    shape.dataset.art = artKey || "";
+    if (tiny) {
+      shape.setAttribute("viewBox", "0 0 14 3");
+      shape.innerHTML = '<rect width="14" height="3" rx="1.5"/>';
+    } else if (ART[artKey]) {
+      shape.setAttribute("viewBox", ART[artKey].vb);
+      shape.innerHTML = ART[artKey].svg;
+    }
+  }
+  shape.style.height = `${tiny ? MIN_PX : rawH}px`;
+  shape.style.width = `${tiny ? 14 : rawW}px`;
+  $("subjectLabel").textContent = metres(sizeTruth ? sizeShown : sizeGuess);
+}
+
+function setSizeFromSlider() {
+  sizeGuess = 10 ** Number($("sizeSlider").value);
+  if (!sizeTruth) sizeShown = sizeGuess;       // direct while guessing, animated on reveal
+  $("sizeReadout").textContent = metres(sizeGuess);
+  paintScene();                                // draw now; the loop only eases the zoom
+}
+
+// Both controls write the same log-metres value. The mapping is deliberately
+// relative (travel -> decades) rather than "the corner follows your finger":
+// growing the object zooms the camera out, and an absolute mapping would then
+// chase its own tail.
+const PX_PER_DECADE = 260;
+
+function nudgeSize(decades) {
+  const el = $("sizeSlider");
+  el.value = String(clamp(Number(el.value) + decades, Number(el.min), Number(el.max)));
+  setSizeFromSlider();
+}
+
+function attachDrag(el, axis) {
+  let start = 0, startVal = 0, dragging = false;
+  el.addEventListener("pointerdown", (e) => {
+    if (phase !== "guessing" || cfg().bank !== "objects") return;
+    if (el === $("subjectFig") && e.target === $("sizeGrip")) return;   // grip handles itself
+    dragging = true;
+    start = axis === "corner" ? e.clientY - e.clientX : e.clientY;
+    startVal = Number($("sizeSlider").value);
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    // up, or out to the right, makes it bigger
+    const travel = axis === "corner" ? start - (e.clientY - e.clientX) : start - e.clientY;
+    const v = clamp(startVal + travel / PX_PER_DECADE, Number($("sizeSlider").min), Number($("sizeSlider").max));
+    $("sizeSlider").value = String(v);
+    setSizeFromSlider();
+  });
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    try { el.releasePointerCapture(e.pointerId); } catch (err) {}
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+
+function attachSizeDrag() {
+  attachDrag($("subjectFig"), "vertical");
+  attachDrag($("sizeGrip"), "corner");
+  // Without a slider the keyboard needs its own way in.
+  $("subjectFig").addEventListener("keydown", (e) => {
+    if (phase !== "guessing" || cfg().bank !== "objects") return;
+    const step = e.shiftKey ? 0.1 : 0.02;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") { nudgeSize(step); e.preventDefault(); }
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") { nudgeSize(-step); e.preventDefault(); }
+  });
+}
+
+/* ---------------- rendering ---------------- */
+function showScreen(id) {
+  for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id);
+}
+
+function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+
+function renderTimer() {
+  const t = $("timer");
+  t.textContent = `${timeLeft < 10 ? timeLeft.toFixed(1) : Math.ceil(timeLeft)}s`;
+  t.classList.toggle("low", timeLeft <= 10);
+}
+
+function startTimer(seconds) {
+  stopTimer();
+  timeLeft = seconds;
+  renderTimer();
+  timerId = setInterval(() => {
+    timeLeft = Math.max(0, timeLeft - 0.1);
+    renderTimer();
+    if (timeLeft === 0) { stopTimer(); gameOver(); }
+  }, 100);
+}
+
+function renderLives(breakingIndex = -1) {
+  const total = cfg().lives;
+  const box = $("lives");
+  box.hidden = total === Infinity || !!cfg().online || !!cfg().local;
+  $("timer").hidden = !cfg().seconds;
+  if (total === Infinity) return;
+  box.innerHTML = "";
+  for (let i = 0; i < total; i++) {
+    const h = document.createElement("span");
+    const lost = i >= lives;
+    h.className = "heart" + (lost ? " lost" : "") + (i === breakingIndex ? " breaking" : "");
+    h.textContent = lost ? "🖤" : "❤️";
+    box.appendChild(h);
+  }
+}
+
+function updateReadout() {
+  const v = 10 ** Number($("slider").value);
+  $("readout").innerHTML = `${words(v)} <small>${deck[idx] ? deck[idx].unit : ""}</small>`;
+  const gm = $("guessMarker");
+  gm.style.left = posFor(Number($("slider").value));
+  $("guessLabel").textContent = "you";
+}
+
+function loadQuestion() {
+  const q = deck[idx];
+  const card = $("questionCard");
+  phase = "loading";
+  $("actionBtn").disabled = true;
+  card.classList.add("swap");
+  setTimeout(() => {
+    if (phase !== "loading") return;   // the run ended while this card was sliding in
+    $("catTag").textContent = q.category === "sizes" ? "size it up" : q.category;
+    $("catTag").dataset.cat = q.category;
+    $("qIndex").textContent = `Question ${idx + 1}`;
+    const sizing = cfg().bank === "objects";
+    $("sliderStage").hidden = sizing;
+    $("sizeStage").hidden = !sizing;
+    $("prompt").textContent = sizing ? `How big is ${q.prompt}?` : q.prompt;
+    $("unit").textContent = sizing
+      ? "Stretch the shape until it looks right beside the human."
+      : `Answer in ${q.unit}.`;
+    $("reveal").classList.remove("on");
+    $("truthMarker").classList.remove("show");
+    const party = !!cfg().local;
+    $("turnBanner").hidden = !party;
+    $("soloStats").hidden = party;
+    $("roundBoard").hidden = !party;
+    $("guessMarker").hidden = party;
+    for (const el of $("markers").querySelectorAll(".marker.party")) el.remove();
+    $("slider").disabled = false;
+    $("slider").value = 6;
+    $("sizeSlider").disabled = false;
+    $("sizeSlider").value = "0.23";           // start level with the human
+    $("sizeReadout").classList.remove("revealed");
+    $("subjectFig").classList.remove("revealed");
+    $("sceneHint").textContent = sizeInput === "grip"
+      ? "drag the corner grip to resize"
+      : "drag the shape, or the slider below";
+    sizeTruth = 0;
+    if (sizing) { setSizeFromSlider(); sizeShown = sizeGuess; startCamera(true); } else { stopCamera(); }
+    $("actionBtn").textContent = "Lock it in";
+    $("actionBtn").disabled = false;
+    if (sizing && $("humanBody").innerHTML !== HUMAN_SVG) $("humanBody").innerHTML = HUMAN_SVG;
+    $("guessMarker").classList.remove("locked");
+    $("hint").textContent = !sizing
+      ? "Drag the slider, or use ← → for fine steps. Enter to submit."
+      : sizeInput === "grip"
+        ? "Drag the corner grip, or focus the shape and use ↑ ↓. Enter to submit."
+        : "Drag the slider or the shape itself. Enter to submit.";
+    if (!sizing) updateReadout();
+    card.classList.remove("swap");
+    phase = "guessing";
+    applySizeInput();      // the grip only shows while a guess is open
+    if (party) { roundGuesses = []; passTo(0); }
+  }, 160);
+}
+
+/* ---------------- online rooms: the state machine ----------------
+   The host owns the room object and broadcasts it whole; guests only render
+   what they are sent. Everything here is a plain function over that object so
+   it can be exercised without a network. The deck is never transmitted — both
+   sides rebuild it from the seed, exactly as a challenge link does.        */
+const MAX_ROOM = 6;
+const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // no I/O/0/1
+const roomCode = () => Array.from({ length: 4 }, () =>
+  CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join("");
+
+function newRoom(code, hostId, hostName) {
+  return {
+    code, hostId, seed: roomCode() + roomCode(), rounds: 10, round: 0,
+    stage: "lobby",                 // lobby | question | reveal | over
+    members: [{ id: hostId, name: hostName, score: 0 }],
+    guesses: {}                     // id -> log10(guess), this round only
+  };
+}
+
+function roomJoin(room, id, name) {
+  if (room.stage !== "lobby") return { ok: false, why: "That game has already started." };
+  if (room.members.length >= MAX_ROOM) return { ok: false, why: "That room is full." };
+  if (!room.members.some(m => m.id === id)) {
+    const taken = new Set(room.members.map(m => m.name));
+    let n = (name || "").trim().slice(0, 14) || "Player";
+    if (taken.has(n)) { let k = 2; while (taken.has(`${n} ${k}`)) k++; n = `${n} ${k}`; }
+    room.members.push({ id, name: n, score: 0 });
+  }
+  return { ok: true };
+}
+
+function roomLeave(room, id) {
+  room.members = room.members.filter(m => m.id !== id);
+  delete room.guesses[id];
+}
+
+function roomStart(room) {
+  room.stage = "question";
+  room.round = 0;
+  room.guesses = {};
+  for (const m of room.members) m.score = 0;
+}
+
+function roomGuess(room, id, log) {
+  if (room.stage !== "question") return false;
+  if (!room.members.some(m => m.id === id)) return false;
+  if (room.guesses[id] !== undefined) return false;      // one guess each
+  room.guesses[id] = log;
+  return true;
+}
+
+const roomAllIn = (room) => room.members.length > 0
+  && room.members.every(m => room.guesses[m.id] !== undefined);
+
+// Scores are only ever awarded here, once per round, by the host.
+function roomReveal(room, deck) {
+  if (room.stage !== "question") return;
+  const truth = Math.log10(deck[room.round % deck.length].answerValue);
+  for (const m of room.members) {
+    const g = room.guesses[m.id];
+    if (g === undefined) continue;
+    m.score += Math.max(0, Math.round(100 - 20 * Math.abs(g - truth)));
+  }
+  room.stage = "reveal";
+}
+
+function roomNext(room) {
+  if (room.round + 1 >= room.rounds) { room.stage = "over"; return; }
+  room.round++;
+  room.guesses = {};
+  room.stage = "question";
+}
+
+/* ---------------- online rooms: transport ----------------
+   WebRTC via PeerJS's free public broker, so there is nothing to sign up for
+   and nothing to run. The library is fetched only when someone actually opens
+   online play.                                                            */
+const PEERJS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js";
+const peerIdFor = (code) => `magniguess-v1-${code}`;
+
+let net = null;     // { host, peer, conns, send }
+let room = null;    // the room object: authoritative on the host, a copy on guests
+let myId = null;
+// Peers open asynchronously. If someone taps Join, waits, then taps Start a
+// room, the abandoned attempt's callbacks would otherwise land on the live
+// session and clobber it — so every session gets a token and stale ones bail.
+let netSession = 0;
+
+function loadPeerJS() {
+  if (window.Peer) return Promise.resolve(window.Peer);
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = PEERJS_SRC;
+    el.onload = () => window.Peer ? resolve(window.Peer) : reject(new Error("PeerJS loaded but is missing"));
+    el.onerror = () => reject(new Error("Could not load PeerJS — check the connection"));
+    document.head.appendChild(el);
+  });
+}
+
+function netStatus(msg, bad) {
+  $("netStatus").textContent = msg || "";
+  $("netStatus").classList.toggle("bad", !!bad);
+}
+
+function broadcast() {
+  if (!net || !net.host) return;
+  const payload = { t: "state", room };
+  for (const c of net.conns) { try { c.send(payload); } catch (e) {} }
+}
+
+function closeNet() {
+  netSession++;
+  if (!net) return;
+  try { net.peer.destroy(); } catch (e) {}
+  net = null; room = null; myId = null;
+}
+
+async function createRoom() {
+  closeNet();
+  const mine = netSession;
+  const stale = () => netSession !== mine;
+  const name = ($("onlineName").value || "").trim() || "Host";
+  netStatus("Opening a room…");
+  let Peer;
+  try { Peer = await loadPeerJS(); }
+  catch (e) { return stale() || netStatus(e.message, true); }
+  if (stale()) return;
+
+  const code = roomCode();
+  const hostId = peerIdFor(code);
+  const peer = new Peer(hostId, { debug: 0 });
+  myId = hostId;
+  net = { host: true, peer, conns: [] };
+  room = newRoom(code, hostId, name);
+
+  peer.on("open", () => {
+    if (stale()) { try { peer.destroy(); } catch (e) {} return; }
+    netStatus("Room open — waiting for players.");
+    showRoom();
+  });
+  peer.on("error", (err) => {
+    if (stale()) return;
+    netStatus(err && err.type === "unavailable-id"
+      ? "That room code was taken — try starting again."
+      : `Connection problem: ${(err && err.type) || "unknown"}`, true);
+  });
+  peer.on("connection", (conn) => {
+    if (stale()) { try { conn.close(); } catch (e) {} return; }
+    conn.on("open", () => {
+      if (stale()) return;
+      net.conns.push(conn);
+      conn.on("data", (msg) => onHostMessage(conn, msg));
+      conn.on("close", () => {
+        net.conns = net.conns.filter(c => c !== conn);
+        if (conn.metadata && conn.metadata.id) roomLeave(room, conn.metadata.id);
+        broadcast(); showRoom(); renderOnlineRound();
+      });
+    });
+  });
+}
+
+function onHostMessage(conn, msg) {
+  if (!msg || typeof msg !== "object" || !room) return;
+  if (msg.t === "hello") {
+    conn.metadata = { id: conn.peer };
+    const res = roomJoin(room, conn.peer, String(msg.name || ""));
+    if (!res.ok) { try { conn.send({ t: "denied", why: res.why }); } catch (e) {} return; }
+    broadcast(); showRoom();
+  } else if (msg.t === "guess") {
+    if (typeof msg.log !== "number" || !isFinite(msg.log)) return;
+    if (roomGuess(room, conn.peer, clamp(msg.log, MIN_LOG, MAX_LOG))) {
+      if (roomAllIn(room)) roomReveal(room, deck);
+      broadcast(); renderOnlineRound();
+    }
+  }
+}
+
+async function joinRoom() {
+  const code = ($("joinCode").value || "").trim().toUpperCase();
+  const name = ($("onlineName").value || "").trim() || "Player";
+  if (code.length !== 4) return netStatus("A room code is four characters.", true);
+  closeNet();
+  const mine = netSession;
+  const stale = () => netSession !== mine;
+  netStatus("Connecting…");
+  let Peer;
+  try { Peer = await loadPeerJS(); }
+  catch (e) { return stale() || netStatus(e.message, true); }
+  if (stale()) return;
+
+  const peer = new Peer({ debug: 0 });
+  net = { host: false, peer, conns: [] };
+  peer.on("open", (id) => {
+    if (stale()) { try { peer.destroy(); } catch (e) {} return; }
+    myId = id;
+    const conn = peer.connect(peerIdFor(code), { reliable: true });
+    net.conns = [conn];
+    net.send = (m) => { try { conn.send(m); } catch (e) {} };
+    conn.on("open", () => {
+      if (stale()) return;
+      netStatus("Connected — waiting for the host to start.");
+      conn.send({ t: "hello", name });
+    });
+    conn.on("data", (msg) => {
+      if (stale() || !msg || typeof msg !== "object") return;
+      if (msg.t === "denied") { netStatus(msg.why, true); closeNet(); return; }
+      if (msg.t === "state") { room = msg.room; onRoomUpdate(); }
+    });
+    conn.on("close", () => stale() || netStatus("The host closed the room.", true));
+    conn.on("error", () => stale() || netStatus("Lost the connection to the host.", true));
+  });
+  peer.on("error", (err) => {
+    if (stale()) return;
+    netStatus(err && err.type === "peer-unavailable"
+      ? "No room with that code is open."
+      : `Connection problem: ${(err && err.type) || "unknown"}`, true);
+  });
+}
+
+/* ---------------- online rooms: screens ---------------- */
+function showRoom() {
+  if (!room) return;
+  $("onlineStart").hidden = true;
+  $("onlineRoom").hidden = false;
+  $("roomCodeText").textContent = room.code;
+  $("roomCodeSub").textContent = net && net.host
+    ? "Share this with your friends"
+    : "You are in this room";
+  const box = $("lobbyPlayers");
+  box.innerHTML = "";
+  room.members.forEach((m, i) => {
+    const row = document.createElement("div");
+    row.className = "board-row";
+    row.innerHTML = `<span class="p-dot" style="background:${PLAYER_COLOURS[i % PLAYER_COLOURS.length]}"></span>`
+      + `<span class="nm">${m.name}${m.id === myId ? " (you)" : ""}${m.id === room.hostId ? " · host" : ""}</span>`;
+    box.appendChild(row);
+  });
+
+  const chips = $("onlineRoundChips");
+  chips.innerHTML = "";
+  for (const r of [5, 10, 15]) {
+    const b = document.createElement("button");
+    b.textContent = `${r} rounds`;
+    b.setAttribute("aria-pressed", String(r === room.rounds));
+    b.disabled = !(net && net.host);
+    b.addEventListener("click", () => { room.rounds = r; broadcast(); showRoom(); });
+    chips.appendChild(b);
+  }
+  $("onlineStartBtn").hidden = !(net && net.host);
+  $("onlineStartBtn").disabled = room.members.length < 2;
+  if (net && net.host) {
+    const n = room.members.length;
+    netStatus(n < 2
+      ? "Waiting for someone to join…"
+      : `${n} players in. Start whenever you are ready.`);
+  }
+}
+
+// Everything below rebuilds the local view from whatever room state we hold.
+function onRoomUpdate() {
+  if (!room) return;
+  if (room.stage === "lobby") { showRoom(); showScreen("onlineScreen"); return; }
+  if (room.stage === "over") return onlineOver();
+  syncOnlineDeck();
+  if (document.querySelector(".screen.on").id !== "playScreen") showScreen("playScreen");
+  renderOnlineRound();
+}
+
+// Both sides derive the identical deck from the seed, so no questions travel.
+function syncOnlineDeck() {
+  players = room.members.map((m, i) => ({
+    name: m.name, colour: PLAYER_COLOURS[i % PLAYER_COLOURS.length], score: m.score, hits: 0
+  }));
+  partyRounds = room.rounds;
+  round = room.round;
+  const want = hashSeed(room.seed);
+  if (!deck.length || deck.__seed !== want) {
+    deck = shuffled(QUESTIONS, mulberry32(want));
+    deck.__seed = want;
+  }
+  idx = room.round % deck.length;
+}
+
+function renderOnlineRound() {
+  if (!room || room.stage === "lobby") return;
+  const q = deck[idx];
+  if (!q) return;
+  $("turnBanner").hidden = false;
+  $("soloStats").hidden = true;
+  $("lives").hidden = true;
+  $("guessMarker").hidden = room.stage === "reveal";
+
+  if (room.stage === "question" && $("prompt").textContent !== q.prompt) {
+    // a fresh question: reset the card without going through loadQuestion's timer
+    $("catTag").textContent = q.category;
+    $("catTag").dataset.cat = q.category;
+    $("qIndex").textContent = `Round ${room.round + 1} of ${room.rounds}`;
+    $("prompt").textContent = q.prompt;
+    $("unit").textContent = `Answer in ${q.unit}.`;
+    $("reveal").classList.remove("on");
+    $("truthMarker").classList.remove("show");
+    for (const el of $("markers").querySelectorAll(".marker.party")) el.remove();
+    $("sliderStage").hidden = false;
+    $("sizeStage").hidden = true;
+    $("slider").value = 6;
+    updateReadout();
+  }
+
+  const mine = room.guesses[myId] !== undefined;
+  const inCount = Object.keys(room.guesses).length;
+  $("turnBanner").innerHTML = `<span class="round-count">round ${room.round + 1}/${room.rounds}`
+    + ` · ${inCount}/${room.members.length} locked in</span>`;
+
+  if (room.stage === "question") {
+    $("slider").disabled = mine;
+    $("actionBtn").disabled = mine;
+    $("actionBtn").textContent = mine ? "Waiting for the others…" : "Lock it in";
+    $("hint").textContent = net && net.host && inCount > 0 && !roomAllIn(room)
+      ? "Everyone else is still guessing. You can reveal early from here."
+      : "Drag the slider, or use ← → for fine steps. Enter to submit.";
+    $("roundBoard").hidden = true;
+    phase = mine ? "waiting" : "guessing";
+  } else {
+    showOnlineReveal();
+  }
+}
+
+function showOnlineReveal() {
+  const q = deck[idx];
+  $("slider").disabled = true;
+  $("guessMarker").hidden = true;
+  const box = $("markers");
+  for (const el of box.querySelectorAll(".marker.party")) el.remove();
+  const truth = Math.log10(q.answerValue);
+  const shown = [];
+  room.members.forEach((m, i) => {
+    const g = room.guesses[m.id];
+    if (g === undefined) return;
+    const el = document.createElement("div");
+    el.className = "marker party";
+    el.style.color = PLAYER_COLOURS[i % PLAYER_COLOURS.length];
+    el.style.left = posFor(g);
+    el.innerHTML = `<span>${m.name.slice(0, 6)}</span><span class="pin"></span>`;
+    box.appendChild(el);
+    shown.push({ i, log: g, err: Math.abs(g - truth), points: Math.max(0, Math.round(100 - 20 * Math.abs(g - truth))) });
+  });
+  const tm = $("truthMarker");
+  tm.style.left = posFor(truth);
+  requestAnimationFrame(() => tm.classList.add("show"));
+
+  $("verdictWord").textContent = "Everyone in";
+  $("verdictWord").style.color = "var(--ok)";
+  $("verdictPts").textContent = shown.length ? `best +${Math.max(...shown.map(g => g.points))}` : "";
+  $("truthLine").innerHTML = `Actual: <b>${exact(q.answerValue)}</b> ${q.unit}${q.answerValue >= 1e7 ? ` (${words(q.answerValue)})` : ""}.`;
+  $("errLine").textContent = "";
+  $("roundBoard").hidden = false;
+  renderBoard($("roundBoard"), shown);
+  $("reveal").classList.add("on");
+
+  const host = net && net.host;
+  const last = room.round + 1 >= room.rounds;
+  $("actionBtn").disabled = !host;
+  $("actionBtn").textContent = host ? (last ? "Final scores" : "Next question") : "Waiting for the host…";
+  $("hint").textContent = host ? "Enter for the next question." : "The host moves everyone on.";
+  phase = "revealed";
+}
+
+function onlineAction() {
+  if (!room || !net) return;
+  if (room.stage === "question") {
+    const log = Number($("slider").value);
+    if (net.host) {
+      if (roomGuess(room, myId, log)) {
+        if (roomAllIn(room)) roomReveal(room, deck);
+        broadcast(); renderOnlineRound();
+      }
+    } else {
+      net.send({ t: "guess", log });
+      room.guesses[myId] = log;    // optimistic, the host's copy will confirm
+      renderOnlineRound();
+    }
+  } else if (room.stage === "reveal" && net.host) {
+    roomNext(room);
+    if (room.stage === "over") { broadcast(); onlineOver(); return; }
+    syncOnlineDeck();
+    broadcast();
+    renderOnlineRound();
+  }
+}
+
+function onlineOver() {
+  phase = "over";
+  players = room.members.map((m, i) => ({
+    name: m.name, colour: PLAYER_COLOURS[i % PLAYER_COLOURS.length], score: m.score, hits: 0
+  }));
+  partyRounds = room.rounds;
+  partyOver();
+}
+
+/* ---------------- pass and play ---------------- */
+function renderPartySetup() {
+  const box = $("playerRows");
+  box.innerHTML = "";
+  players.forEach((p, i) => {
+    const row = document.createElement("div");
+    row.className = "p-row";
+    row.innerHTML = `<span class="p-dot" style="background:${p.colour}"></span>`;
+    const input = document.createElement("input");
+    input.value = p.name;
+    input.maxLength = 14;
+    input.setAttribute("aria-label", `Player ${i + 1} name`);
+    input.addEventListener("input", () => { p.name = input.value; });
+    row.appendChild(input);
+    box.appendChild(row);
+  });
+  $("addPlayerBtn").disabled = players.length >= 4;
+  $("removePlayerBtn").disabled = players.length <= 2;
+
+  const chips = $("roundChips");
+  chips.innerHTML = "";
+  for (const r of [5, 10, 15]) {
+    const b = document.createElement("button");
+    b.textContent = `${r} rounds`;
+    b.setAttribute("aria-pressed", String(r === partyRounds));
+    b.addEventListener("click", () => { partyRounds = r; renderPartySetup(); });
+    chips.appendChild(b);
+  }
+}
+
+function addPlayer() {
+  if (players.length >= 4) return;
+  const i = players.length;
+  players.push({ name: DEFAULT_NAMES[i], colour: PLAYER_COLOURS[i], score: 0, hits: 0 });
+  renderPartySetup();
+}
+
+const playerName = (p, i) => (p.name || "").trim() || DEFAULT_NAMES[i];
+
+function showTurn() {
+  const p = players[turn];
+  $("turnBanner").innerHTML = `<span class="p-dot" style="background:${p.colour}"></span>`
+    + `<span>${playerName(p, turn)}</span>`
+    + `<span class="round-count">&nbsp;· round ${round + 1}/${partyRounds}</span>`;
+}
+
+// The overlay hides the card so the next player cannot see the last guess.
+function passTo(i) {
+  turn = i;
+  showTurn();
+  $("passName").textContent = playerName(players[i], i);
+  $("passOverlay").hidden = false;
+  phase = "passing";
+}
+
+function takeTurn() {
+  $("passOverlay").hidden = true;
+  showTurn();
+  $("slider").disabled = false;
+  $("slider").value = 6;
+  updateReadout();
+  $("guessMarker").classList.remove("locked");
+  phase = "guessing";
+}
+
+function submitParty() {
+  const q = deck[idx];
+  const guessLog = Number($("slider").value);
+  const err = Math.abs(guessLog - Math.log10(q.answerValue));
+  const points = Math.max(0, Math.round(100 - 20 * err));
+  const p = players[turn];
+  p.score += points;
+  if (err <= cfg().goodErr) p.hits++;
+  roundGuesses.push({ i: turn, log: guessLog, err, points });
+  cue(err <= 0.25 ? "bullseye" : err <= cfg().goodErr ? "good" : "miss");
+
+  if (turn + 1 < players.length) return passTo(turn + 1);
+  revealParty();
+}
+
+function revealParty() {
+  const q = deck[idx];
+  $("slider").disabled = true;
+  $("turnBanner").innerHTML = `<span class="round-count">round ${round + 1}/${partyRounds}</span>`;
+
+  // Everyone's guess lands on the scale at once, next to the truth.
+  $("guessMarker").hidden = true;
+  const box = $("markers");
+  for (const el of box.querySelectorAll(".marker.party")) el.remove();
+  for (const g of roundGuesses) {
+    const p = players[g.i];
+    const el = document.createElement("div");
+    el.className = "marker party";
+    el.style.color = p.colour;
+    el.style.left = posFor(g.log);
+    el.innerHTML = `<span>${playerName(p, g.i).slice(0, 6)}</span><span class="pin"></span>`;
+    box.appendChild(el);
+  }
+  const tm = $("truthMarker");
+  tm.style.left = posFor(Math.log10(q.answerValue));
+  requestAnimationFrame(() => tm.classList.add("show"));
+
+  const best = Math.max(...roundGuesses.map(g => g.points));
+  $("verdictWord").textContent = "Everyone in";
+  $("verdictWord").style.color = "var(--ok)";
+  $("verdictPts").textContent = `best +${best}`;
+  $("truthLine").innerHTML = `Actual: <b>${exact(q.answerValue)}</b> ${q.unit}${q.answerValue >= 1e7 ? ` (${words(q.answerValue)})` : ""}.`;
+  $("errLine").textContent = "";
+  $("roundBoard").hidden = false;
+  renderBoard($("roundBoard"), roundGuesses);
+  $("reveal").classList.add("on");
+
+  const last = round + 1 >= partyRounds;
+  $("actionBtn").textContent = last ? "Final scores" : "Next question";
+  $("actionBtn").disabled = false;
+  $("hint").textContent = last ? "Enter for the standings." : "Enter for the next question.";
+  phase = "revealed";
+}
+
+// One scoreboard renderer, used between rounds and at the end.
+function renderBoard(board, thisRound) {
+  const order = players.map((p, i) => ({ p, i })).sort((a, b) => b.p.score - a.p.score);
+  board.innerHTML = "";
+  order.forEach(({ p, i }, rank) => {
+    const got = thisRound && thisRound.find(g => g.i === i);
+    const row = document.createElement("div");
+    row.className = "board-row" + (rank === 0 ? " lead" : "");
+    row.innerHTML = `<span class="rk">${rank + 1}</span>`
+      + `<span class="p-dot" style="background:${p.colour}"></span>`
+      + `<span class="nm">${playerName(p, i)}</span>`
+      + (got ? `<span class="gs">${words(10 ** got.log)} · +${got.points}</span>` : "")
+      + `<span class="pt">${p.score.toLocaleString("en-US")}</span>`;
+    board.appendChild(row);
+  });
+}
+
+function nextParty() {
+  if (round + 1 >= partyRounds || idx + 1 >= deck.length) return partyOver();
+  round++;
+  idx++;
+  roundGuesses = [];
+  loadQuestion();
+}
+
+function partyOver() {
+  phase = "over";
+  const order = players.map((p, i) => ({ p, i })).sort((a, b) => b.p.score - a.p.score);
+  const top = order[0];
+  const tied = order.filter(o => o.p.score === top.p.score).length > 1;
+  $("goTitle").textContent = tied ? "It's a tie" : `${playerName(top.p, top.i)} wins`;
+  $("goSub").textContent = `${partyRounds} round${partyRounds === 1 ? "" : "s"} · ${players.length} players`;
+  $("soloResults").hidden = true;
+  $("partyResults").hidden = false;
+  $("newBest").hidden = true;
+  $("emojis").textContent = "";
+  $("recapList").innerHTML = "";
+  renderBoard($("partyResults"), null);
+  cue("over");
+  showScreen("overScreen");
+}
+
+/* ---------------- the round ---------------- */
+function submitGuess() {
+  if (cfg().local) return submitParty();
+  const q = deck[idx];
+  const sizing = cfg().bank === "objects";
+  const guessLog = sizing ? Number($("sizeSlider").value) : Number($("slider").value);
+  const guess = 10 ** guessLog;
+  const err = Math.abs(guessLog - Math.log10(q.answerValue));
+  const points = Math.max(0, Math.round(100 - 20 * err));
+  const missed = err > cfg().goodErr;
+  const lostLife = missed && cfg().lives !== Infinity;
+
+  score += points;
+  if (missed && !lostLife) { streak = 0; renderLives(); }
+  else if (lostLife) {
+    const breaking = lives - 1;
+    lives--; streak = 0;
+    renderLives(breaking);
+  } else {
+    streak++;
+    bestStreak = Math.max(bestStreak, streak);
+    renderLives();
+  }
+  results.push({ q, guess, err, points, lostLife });
+  const stats = recordAnswer(q.category, points, err);
+
+  if (lostLife) { cue("life"); buzz([70, 50, 110]); }
+  else if (err <= 0.25) cue("bullseye");
+  else if (missed) cue("miss");
+  else cue("good");
+  checkBadges(err, stats);
+
+  $("scoreVal").textContent = score.toLocaleString("en-US");
+  $("streakVal").textContent = streak;
+
+  if (sizing) {
+    // The shape grows or shrinks to the truth while the camera pulls back to fit.
+    $("sizeSlider").disabled = true;
+    $("sizeGrip").hidden = true;
+    sizeTruth = q.answerValue;
+    $("subjectFig").classList.add("revealed");
+    $("sceneHint").textContent = `actual: ${metres(q.answerValue)}`;
+    $("sizeReadout").textContent = metres(q.answerValue);
+    $("sizeReadout").classList.add("revealed");
+  } else {
+    // Reveal on the same axis.
+    $("slider").disabled = true;
+    const tm = $("truthMarker");
+    tm.style.left = posFor(Math.log10(q.answerValue));
+    $("truthLabel").textContent = "true";
+    $("guessMarker").classList.add("locked");
+    requestAnimationFrame(() => tm.classList.add("show"));
+  }
+
+  const good = cfg().goodErr;
+  const word = err <= 0.25 ? "Bullseye" : err <= 0.75 ? "Close" : err <= good ? "Survived" : "Way off";
+  const colour = err <= 0.75 ? "var(--ok)" : err <= good ? "var(--truth)" : "var(--bad)";
+  $("verdictWord").textContent = word;
+  $("verdictWord").style.color = colour;
+  $("verdictPts").textContent = `+${points} pts`;
+  $("truthLine").innerHTML = sizing
+    ? `Actual: <b>${metres(q.answerValue)}</b> ${q.long ? "long" : "tall"}.`
+    : `Actual: <b>${exact(q.answerValue)}</b> ${q.unit}${q.answerValue >= 1e7 ? ` (${words(q.answerValue)})` : ""}.`;
+  const factor = 10 ** err;
+  const dir = sizing
+    ? (guess > q.answerValue ? "too big" : "too small")
+    : (guess > q.answerValue ? "too high" : "too low");
+  $("errLine").textContent = err < 0.02
+    ? "Dead on."
+    : `You were ${factor >= 10 ? Math.round(factor).toLocaleString("en-US") : factor.toFixed(1)}× ${dir} — ${err.toFixed(2)} orders of magnitude off.`;
+  $("reveal").classList.add("on");
+
+  const dead = lives <= 0;
+  $("actionBtn").textContent = dead ? "See how you did" : "Next question";
+  $("hint").textContent = cfg().endless ? "Practice run — Enter for another, Esc when you're done."
+    : cfg().seconds ? "The clock is still running. Enter for the next one."
+    : lostLife && !dead ? "A life gone. Enter to keep going."
+    : "Enter for the next one.";
+  phase = "revealed";
+}
+
+function next() {
+  if (cfg().local) return nextParty();
+  if (lives <= 0) return gameOver();
+  if (idx + 1 >= deck.length) {
+    if (!cfg().endless) return gameOver();
+    deck = shuffled(deck, mulberry32((Math.random() * 2 ** 32) >>> 0));  // reshuffle and keep going
+    idx = -1;
+  }
+  idx++;
+  loadQuestion();
+}
+
+/* ---------------- game over ---------------- */
+function emojiFor(r) {
+  if (r.err <= 0.25) return "🟩";
+  if (r.err <= 0.75) return "🟨";
+  if (r.err <= cfg().goodErr) return "🟧";
+  return "🟥";
+}
+
+function gameOver() {
+  phase = "over";
+  stopTimer();
+  stopCamera();
+  cue("over");
+  const survived = results.filter(r => r.err <= cfg().goodErr).length;
+  const bestErr = results.length ? Math.min(...results.map(r => r.err)) : null;
+
+  const cleared = idx + 1 >= deck.length && lives > 0 && timeLeft > 0;
+  if (cleared && results.length >= 20) unlock("cleared");
+  const ranOut = cfg().seconds && timeLeft <= 0;
+  $("goTitle").textContent = cleared ? "Bank cleared" : ranOut ? "Time's up" : "Out of lives";
+  $("goSub").textContent = cleared
+    ? "You answered every question in the deck. Nothing left to guess."
+    : `${MODES[mode].name}${catSuffix()} — ${results.length} question${results.length === 1 ? "" : "s"} answered.`;
+  $("goSurvived").innerHTML = `${survived} <small>questions</small>`;
+  $("goScore").textContent = score.toLocaleString("en-US");
+  $("goBestErr").innerHTML = bestErr === null ? "—" : `${bestErr.toFixed(2)} <small>OOM off</small>`;
+  $("goStreak").textContent = bestStreak;
+
+  const prev = Number(safeGet(bestKey()) || 0);
+  const isBest = !cfg().noScore && score > prev;
+  if (isBest) safeSet(bestKey(), String(score));
+  $("newBest").hidden = !isBest || score === 0;
+  $("emojis").textContent = results.map(emojiFor).join("");
+
+  const list = $("recapList");
+  list.innerHTML = "";
+  for (const r of results) {
+    const li = document.createElement("li");
+    li.innerHTML = `${emojiFor(r)} ${r.q.prompt} — <b>${words(r.q.answerValue)}</b> ${r.q.unit} <span style="color:var(--faint)">(you said ${words(r.guess)})</span>`;
+    list.appendChild(li);
+  }
+
+  refreshHome();
+  showScreen("overScreen");
+}
+
+function shareText() {
+  if (cfg().local) {
+    const order = players.map((p, i) => ({ p, i })).sort((a, b) => b.p.score - a.p.score);
+    return [`Magniguess Pass and play · ${partyRounds} rounds`]
+      .concat(order.map(({ p, i }, r) =>
+        `${r + 1}. ${playerName(p, i)} — ${p.score.toLocaleString("en-US")}`))
+      .join("\n");
+  }
+  const bestErr = results.length ? Math.min(...results.map(r => r.err)) : 0;
+  const head = `Magniguess ${MODES[mode].name}`
+    + (mode === "daily" ? ` ${todayKey()}` : "")
+    + catSuffix();
+  return [
+    head,
+    `${results.filter(r => r.err <= cfg().goodErr).length} survived · ${score.toLocaleString("en-US")} pts · best guess ${bestErr.toFixed(2)} OOM off`,
+    results.map(emojiFor).join("")
+  ].join("\n");
+}
+
+// Several badges can land on one answer, so toasts queue instead of clobbering.
+const toastQueue = [];
+let toastBusy = false;
+
+function toast(msg) {
+  toastQueue.push(msg);
+  if (!toastBusy) drainToasts();
+}
+
+function drainToasts() {
+  const t = $("toast");
+  const msg = toastQueue.shift();
+  if (msg === undefined) { toastBusy = false; return; }
+  toastBusy = true;
+  t.textContent = msg;
+  t.classList.add("on");
+  setTimeout(() => {
+    t.classList.remove("on");
+    setTimeout(drainToasts, 260);
+  }, 1700);
+}
+
+/* ---------------- the home page ---------------- */
+function buildHome() {
+  const grid = $("modeGrid");
+  for (const [id, c] of Object.entries(MODES)) {
+    const b = document.createElement("button");
+    b.className = "mode-card";
+    b.dataset.mode = id;
+    b.setAttribute("aria-pressed", String(id === mode));
+    b.innerHTML = `<span class="m-icon">${c.icon}</span>`
+      + `<span class="m-title">${c.name}</span>`
+      + `<span class="m-sub">${c.blurb}</span>`
+      + `<span class="m-meta">${modeMeta(id)}</span>`
+      + `<span class="m-best" data-best="${id}"></span>`;
+    b.addEventListener("click", () => setMode(id));
+    grid.appendChild(b);
+  }
+
+  const chips = $("catChips");
+  for (const c of ["all", ...CATEGORIES]) {
+    const b = document.createElement("button");
+    b.dataset.cat = c;
+    b.textContent = c === "all" ? `Everything (${QUESTIONS.length})` : `${c} (${QUESTIONS.filter(q => q.category === c).length})`;
+    b.setAttribute("aria-pressed", String(c === category));
+    b.addEventListener("click", () => setCategory(c));
+    chips.appendChild(b);
+  }
+}
+
+function refreshHome() {
+  for (const b of document.querySelectorAll(".mode-card")) {
+    b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+    const best = MODES[b.dataset.mode].noScore ? 0 : Number(safeGet(bestKey(b.dataset.mode)) || 0);
+    b.querySelector(".m-best").textContent = best ? `best ${best.toLocaleString("en-US")}` : "";
+  }
+  // The daily order has to match for everyone, so it ignores the category filter.
+  for (const b of document.querySelectorAll("#catChips button")) {
+    b.disabled = !!cfg().allCats;
+    b.setAttribute("aria-pressed", String(b.dataset.cat === category && !cfg().allCats));
+  }
+  $("sizeInputRow").hidden = cfg().bank !== "objects";
+  $("challengeBanner").hidden = !challengeSeed;
+  $("challengeCode").textContent = challengeSeed || "";
+  const pool = cfg().bank === "objects" ? OBJECTS.length
+    : cfg().allCats ? QUESTIONS.length : QUESTIONS.filter(inPlay).length;
+  $("catNote").textContent = cfg().bank === "objects"
+    ? `${pool} objects to size up. These are not sorted into the categories above.`
+    : cfg().allCats
+    ? "Daily always draws on the whole bank, so everyone gets the same run."
+    : category === "all"
+      ? `Drawing from all ${pool} questions.`
+      : `${pool} ${category} questions in this deck.`;
+  $("startBtn").textContent = `Start ${MODES[mode].name.toLowerCase()}`;
+  $("modeLabel").textContent = MODES[mode].name + catSuffix();
+}
+
+// Changing the deck is the one thing a challenge cannot survive, so say so by
+// dropping out of it rather than silently handing out a different set.
+function setMode(m) { if (m !== mode) challengeSeed = null; mode = m; refreshHome(); }
+function setCategory(c) {
+  if (cfg().allCats || c === category) return;
+  challengeSeed = null; category = c; refreshHome();
+}
+
+function goHome() {
+  stopTimer();
+  stopCamera();
+  closeNet();
+  phase = "over";
+  refreshHome();
+  showScreen("startScreen");
+}
+
+/* ---------------- badges ---------------- */
+// Every condition below is read off state the game already keeps.
+const BADGES = [
+  { id: "bull5",     icon: "\u{1F3AF}", name: "Dead reckoning", desc: "Five bullseyes in a row" },
+  { id: "streak10",  icon: "\u{1F525}", name: "On a roll",      desc: "A streak of ten" },
+  { id: "streak25",  icon: "\u{2604}\u{FE0F}", name: "Unstoppable", desc: "A streak of twenty-five" },
+  { id: "bangon",    icon: "\u{1F4AF}", name: "Bang on",        desc: "A guess within 0.02 of the truth" },
+  { id: "untouched", icon: "\u{1F49A}", name: "Untouched",      desc: "Twenty-five questions without losing a life" },
+  { id: "steel",     icon: "\u{1F480}", name: "Nerves of steel", desc: "Ten survived in Sudden death" },
+  { id: "quickfire", icon: "\u{23F1}\u{FE0F}", name: "Quickfire", desc: "Twenty answers in one Time attack" },
+  { id: "cleared",   icon: "\u{1F4DA}", name: "Deck cleared",   desc: "Reached the end of a deck alive" },
+  { id: "rounded",   icon: "\u{1F30D}", name: "Well rounded",   desc: "Twenty answered in every category" }
+];
+const BADGE_KEY = "magniguess.badges";
+
+function loadBadges() {
+  try {
+    const raw = JSON.parse(safeGet(BADGE_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter(x => typeof x === "string") : [];
+  } catch (e) { return []; }
+}
+
+function unlock(id) {
+  const have = loadBadges();
+  if (have.includes(id)) return;
+  const badge = BADGES.find(b => b.id === id);
+  if (!badge) return;
+  have.push(id);
+  safeSet(BADGE_KEY, JSON.stringify(have));
+  cue("badge");
+  toast(`${badge.icon}  Badge unlocked — ${badge.name}`);
+}
+
+// Called after every answer, with the run state already updated.
+function checkBadges(err, stats) {
+  if (err <= 0.25) { bullStreak++; } else { bullStreak = 0; }
+  if (bullStreak >= 5) unlock("bull5");
+  if (streak >= 10) unlock("streak10");
+  if (streak >= 25) unlock("streak25");
+  if (err <= 0.02) unlock("bangon");
+  if (results.length >= 25 && lives === cfg().lives) unlock("untouched");
+  if (mode === "sudden" && lives > 0 && results.length >= 10) unlock("steel");
+  if (mode === "sprint" && results.length >= 20) unlock("quickfire");
+  if (CATEGORIES.every(c => (stats[c] || {}).n >= 20)) unlock("rounded");
+}
+
+/* ---------------- sound & haptics ---------------- */
+// Oscillator blips rather than audio files, so the game stays one file.
+const INPUT_KEY = "magniguess.sizeinput";
+let sizeInput = safeGet(INPUT_KEY) === "grip" ? "grip" : "slider";
+const MUTE_KEY = "magniguess.muted";
+let muted = safeGet(MUTE_KEY) === "1";
+let audioCtx;
+
+function audio() {
+  if (audioCtx === undefined) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { audioCtx = null; }
+  }
+  return audioCtx;
+}
+
+// notes: [{ f: hertz, at: seconds from now, d: duration, type, gain }]
+function play(notes) {
+  if (muted) return;
+  const ac = audio();
+  if (!ac) return;
+  if (ac.state === "suspended") ac.resume().catch(() => {});
+  const t0 = ac.currentTime;
+  for (const nt of notes) {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    const start = t0 + nt.at;
+    osc.type = nt.type || "sine";
+    osc.frequency.setValueAtTime(nt.f, start);
+    if (nt.to) osc.frequency.exponentialRampToValueAtTime(nt.to, start + nt.d);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(nt.gain || 0.13, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + nt.d);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(start);
+    osc.stop(start + nt.d + 0.03);
+  }
+}
+
+const SOUNDS = {
+  bullseye: [{ f: 784, at: 0, d: 0.1 }, { f: 1047, at: 0.08, d: 0.1 }, { f: 1568, at: 0.16, d: 0.22 }],
+  good:     [{ f: 587, at: 0, d: 0.1 }, { f: 880, at: 0.07, d: 0.16 }],
+  miss:     [{ f: 320, at: 0, d: 0.16, type: "triangle" }],
+  life:     [{ f: 420, to: 150, at: 0, d: 0.42, type: "sawtooth", gain: 0.09 }],
+  over:     [{ f: 392, at: 0, d: 0.2, type: "triangle" }, { f: 294, at: 0.16, d: 0.24, type: "triangle" },
+             { f: 196, at: 0.34, d: 0.45, type: "triangle" }],
+  badge:    [{ f: 1047, at: 0, d: 0.09 }, { f: 1319, at: 0.07, d: 0.09 }, { f: 1760, at: 0.14, d: 0.26 }]
+};
+const cue = (name) => play(SOUNDS[name] || []);
+
+function buzz(pattern) {
+  if (muted) return;
+  try { navigator.vibrate && navigator.vibrate(pattern); } catch (e) {}
+}
+
+function setSizeInput(v) {
+  sizeInput = v === "grip" ? "grip" : "slider";
+  safeSet(INPUT_KEY, sizeInput);
+  for (const b of document.querySelectorAll("#sizeInputChips button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.input === sizeInput));
+  }
+  $("sizeInputNote").textContent = sizeInput === "grip"
+    ? "No slider — grab the corner of the shape and drag out to grow it. Arrow keys work too."
+    : "A logarithmic slider under the scene. You can still drag the shape itself.";
+  applySizeInput();
+}
+
+// Only one of the two controls is on screen at a time.
+function applySizeInput() {
+  const gripMode = sizeInput === "grip";
+  $("sizeSlider").hidden = gripMode;
+  $("sizeGrip").hidden = !gripMode || phase !== "guessing";
+}
+
+function setMuted(v) {
+  muted = v;
+  safeSet(MUTE_KEY, v ? "1" : "0");
+  const b = $("muteBtn");
+  b.innerHTML = v ? "&#128263;" : "&#128266;";
+  b.classList.toggle("muted", v);
+  b.setAttribute("aria-pressed", String(!v));
+}
+
+/* ---------------- challenge links ---------------- */
+const newCode = () => Math.random().toString(36).slice(2, 8);
+
+function challengeUrl(code) {
+  const base = location.href.split(/[?#]/)[0];
+  const p = new URLSearchParams({ seed: code, mode });
+  if (!cfg().allCats && category !== "all") p.set("cat", category);
+  return `${base}?${p}`;
+}
+
+// Read a shared link on load. Everything is validated against what we know,
+// so a hand-edited URL can only ever fall back to the defaults.
+function readChallengeFromUrl() {
+  let p;
+  try { p = new URLSearchParams(location.search); } catch (e) { return; }
+  const code = p.get("seed");
+  if (!code) return;
+  challengeSeed = code.slice(0, 32);
+  const m = p.get("mode");
+  if (m && Object.prototype.hasOwnProperty.call(MODES, m)) mode = m;
+  if (MODES[mode].fixedSeed) mode = "survival";   // Daily is the date's deck, not a shared one
+  const c = p.get("cat");
+  if (c && CATEGORIES.includes(c)) category = c;
+}
+
+function setChallenge(code) {
+  challengeSeed = code;
+  refreshHome();
+}
+
+/* ---------------- the stats screen ---------------- */
+function renderStats() {
+  const st = loadStats();
+  const shown = CATEGORIES.concat((st.sizes || {}).n ? ["sizes"] : []);
+  const rows = shown.map(c => ({ cat: c, ...(st[c] || { n: 0, points: 0, hits: 0, sumErr: 0 }) }));
+  const total = rows.reduce((a, r) => ({
+    n: a.n + r.n, points: a.points + r.points, hits: a.hits + r.hits, sumErr: a.sumErr + r.sumErr
+  }), { n: 0, points: 0, hits: 0, sumErr: 0 });
+
+  $("stAnswered").textContent = total.n.toLocaleString("en-US");
+  $("stAvg").textContent = total.n ? Math.round(total.points / total.n) : "0";
+  $("stHits").innerHTML = total.n ? `${Math.round(100 * total.hits / total.n)}<small>%</small>` : "0<small>%</small>";
+  $("stErr").innerHTML = total.n ? `${(total.sumErr / total.n).toFixed(2)} <small>OOM</small>` : "—";
+
+  // A verdict needs enough answers per category to mean anything.
+  const ranked = rows.filter(r => r.n >= 5).sort((a, b) => b.points / b.n - a.points / a.n);
+  $("statsHeadline").textContent = !total.n
+    ? "Nothing recorded yet — play a round and this fills in."
+    : ranked.length < 2
+      ? "Answer at least five in a couple of categories to see where you are strong."
+      : `Strongest at ${ranked[0].cat}, weakest at ${ranked[ranked.length - 1].cat}.`;
+
+  const box = $("catStats");
+  box.innerHTML = "";
+  for (const r of rows) {
+    const avg = r.n ? Math.round(r.points / r.n) : 0;
+    const row = document.createElement("div");
+    row.className = "cat-row" + (r.n < 5 ? " thin" : "");
+    row.innerHTML = `<div class="cat-head">`
+      + `<span class="tag" data-cat="${r.cat}">${r.cat === "sizes" ? "size it up" : r.cat}</span>`
+      + `<span class="cat-num">${r.n ? `avg <b>${avg}</b> · ${Math.round(100 * r.hits / r.n)}% hit · ${r.n} answered` : "not played yet"}</span>`
+      + `</div><div class="bar"><i style="width:${avg}%"></i></div>`;
+    box.appendChild(row);
+  }
+}
+
+function renderBadges() {
+  const have = loadBadges();
+  $("badgeCount").textContent = `${have.length}/${BADGES.length}`;
+  const box = $("badgeCase");
+  box.innerHTML = "";
+  for (const b of BADGES) {
+    const got = have.includes(b.id);
+    const el = document.createElement("div");
+    el.className = "badge" + (got ? "" : " locked");
+    el.innerHTML = `<span class="b-icon">${b.icon}</span>`
+      + `<span><span class="b-name">${b.name}</span><span class="b-desc">${b.desc}</span></span>`;
+    box.appendChild(el);
+  }
+}
+
+function showStats() { renderStats(); renderBadges(); showScreen("statsScreen"); }
+
+/* ---------------- start / reset ---------------- */
+function startRun() {
+  if (cfg().online) {
+    closeNet();
+    $("onlineStart").hidden = false;
+    $("onlineRoom").hidden = true;
+    $("onlineStartBtn").hidden = true;
+    netStatus("");
+    showScreen("onlineScreen");
+    return;
+  }
+  // Pass and play needs its player list before a deck means anything.
+  if (cfg().local) {
+    if (!players.length) { addPlayer(); addPlayer(); }
+    renderPartySetup();
+    showScreen("partyScreen");
+    return;
+  }
+  beginRun();
+}
+
+function beginRun() {
+  const seed = challengeSeed ? hashSeed(challengeSeed)
+    : cfg().fixedSeed ? hashSeed(todayKey())
+    : (Math.random() * 2 ** 32) >>> 0;
+  const bank = cfg().bank === "objects" ? OBJECTS : QUESTIONS;
+  const pool = cfg().allCats ? bank : bank.filter(inPlay);
+  deck = shuffled(pool, mulberry32(seed));
+  idx = 0; lives = cfg().lives; score = 0; streak = 0; bestStreak = 0; results = []; bullStreak = 0;
+  round = 0; turn = 0; roundGuesses = [];
+  for (const p of players) { p.score = 0; p.hits = 0; }
+  $("soloResults").hidden = !!cfg().local;
+  $("partyResults").hidden = !cfg().local;
+  timeLeft = cfg().seconds || Infinity;
+  $("scoreVal").textContent = "0";
+  $("streakVal").textContent = "0";
+  $("modeLabel").textContent = MODES[mode].name
+    + (mode === "daily" ? ` \u00B7 ${todayKey()}` : catSuffix());
+  renderLives();
+  showScreen("playScreen");
+  $("questionCard").classList.add("swap");
+  loadQuestion();
+  if (cfg().seconds) startTimer(cfg().seconds);
+}
+
+/* ---------------- wiring ---------------- */
+$("slider").addEventListener("input", updateReadout);
+$("sizeSlider").addEventListener("input", setSizeFromSlider);
+attachSizeDrag();
+for (const b of document.querySelectorAll("#sizeInputChips button")) {
+  b.addEventListener("click", () => setSizeInput(b.dataset.input));
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && !$("sizeStage").hidden) startCamera();
+});
+
+// The scene is measured in pixels, so it has to be redrawn whenever its box
+// changes — a window resize, or the stage becoming visible in the first place.
+if (window.ResizeObserver) {
+  new ResizeObserver(() => { if (!$("sizeStage").hidden) { ppm = cameraTarget(); paintScene(); } })
+    .observe($("scene"));
+} else {
+  window.addEventListener("resize", () => { if (!$("sizeStage").hidden) paintScene(); });
+}
+$("actionBtn").addEventListener("click", () => {
+  if (cfg().online) return onlineAction();
+  if (phase === "guessing") submitGuess();
+  else if (phase === "revealed") next();
+});
+$("startBtn").addEventListener("click", startRun);
+$("againBtn").addEventListener("click", startRun);
+$("homeBtn").addEventListener("click", goHome);
+$("statsBtn").addEventListener("click", showStats);
+$("addPlayerBtn").addEventListener("click", addPlayer);
+$("removePlayerBtn").addEventListener("click", () => {
+  if (players.length > 2) { players.pop(); renderPartySetup(); }
+});
+$("partyBackBtn").addEventListener("click", goHome);
+$("partyStartBtn").addEventListener("click", beginRun);
+$("passReadyBtn").addEventListener("click", takeTurn);
+$("createRoomBtn").addEventListener("click", createRoom);
+$("joinRoomBtn").addEventListener("click", joinRoom);
+$("onlineBackBtn").addEventListener("click", goHome);
+$("onlineStartBtn").addEventListener("click", () => {
+  if (!net || !net.host || room.members.length < 2) return;
+  roomStart(room);
+  syncOnlineDeck();
+  broadcast();
+  showScreen("playScreen");
+  $("prompt").textContent = "";     // force a fresh render
+  renderOnlineRound();
+});
+$("joinCode").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+$("leaveChallengeBtn").addEventListener("click", () => setChallenge(null));
+$("muteBtn").addEventListener("click", () => setMuted(!muted));
+$("challengeBtn").addEventListener("click", async () => {
+  const code = challengeSeed || newCode();
+  setChallenge(code);
+  const url = challengeUrl(code);
+  const text = `${shareText()}\n\nSame deck, your turn: ${url}`;
+  try { await navigator.clipboard.writeText(text); toast("Challenge link copied"); }
+  catch (e) { window.prompt("Copy this challenge link:", url); }
+});
+$("statsBackBtn").addEventListener("click", goHome);
+$("resetStatsBtn").addEventListener("click", () => {
+  if (!window.confirm("Clear your lifetime accuracy record and badges? High scores are kept.")) return;
+  safeSet(STATS_KEY, "{}");
+  safeSet(BADGE_KEY, "[]");
+  renderStats();
+  renderBadges();
+  toast("Record cleared");
+});
+$("homeBtn2").addEventListener("click", goHome);
+$("shareBtn").addEventListener("click", async () => {
+  const text = shareText();
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Result copied");
+  } catch (e) {
+    window.prompt("Copy your result:", text);
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const open = document.querySelector(".screen.on").id;
+  if (open === "startScreen") { e.preventDefault(); startRun(); }
+  else if (open === "playScreen") {
+    e.preventDefault();
+    if (cfg().online) onlineAction();
+    else if (phase === "guessing") submitGuess();
+    else if (phase === "revealed") next();
+    else if (phase === "passing") takeTurn();
+  }
+  else if (open === "overScreen") { e.preventDefault(); startRun(); }
+  else if (open === "statsScreen") { e.preventDefault(); goHome(); }
+  else if (open === "partyScreen") { e.preventDefault(); beginRun(); }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.querySelector(".screen.on").id !== "startScreen") goHome();
+});
+
+// Offline support. Only meaningful over http(s) — registering from file:// throws,
+// and the page works perfectly well without it either way.
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
+setMuted(muted);
+setSizeInput(sizeInput);
+buildHome();
+readChallengeFromUrl();
+refreshHome();
+updateReadout();
+</script>
+</body>
+</html>
