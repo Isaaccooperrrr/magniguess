@@ -1615,19 +1615,23 @@ const PEERJS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.m
 const peerIdFor = (code) => `magniguess-v1-${code}`;
 const CONNECT_TIMEOUT = 20000;
 
-// STUN lets two peers discover their public address and talk directly. It is
-// enough for most home and mobile networks. It is NOT enough for symmetric
-// NAT — strict corporate networks and some mobile carriers — where the only
-// fix is a TURN relay, which has to be paid for or self-hosted. Add one here
-// and everyone who currently fails will start connecting:
-//   { urls: "turn:your.server:3478", username: "...", credential: "..." }
+// STUN lets two peers find each other directly, which covers most home wifi.
+// It is not enough on symmetric NAT — plenty of mobile carriers, school and
+// office networks — where traffic has to go through a TURN relay instead.
+// These are Open Relay's free public TURN servers: no signup, best-effort.
+// Swap in your own (or a paid one) if reliability ever matters.
+const TURN_USER = "openrelayproject";
 const PEER_OPTS = {
   debug: 0,
   config: {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:global.stun.twilio.com:3478" }
+      { urls: "stun:global.stun.twilio.com:3478" },
+      { urls: "turn:openrelay.metered.ca:80", username: TURN_USER, credential: TURN_USER },
+      { urls: "turn:openrelay.metered.ca:443", username: TURN_USER, credential: TURN_USER },
+      // 443/tcp is the one that survives networks which block UDP entirely
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: TURN_USER, credential: TURN_USER }
     ]
   }
 };
