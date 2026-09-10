@@ -41,6 +41,7 @@
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script>
+var CURRENT_BUILD = "2026-09-10d";
 var TURN_USER = "openrelayproject";
 var ICE = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -98,13 +99,25 @@ function gatherCandidates() {
   }
   row("Matchmaking server", brokerOk ? "reachable" : "unreachable", brokerOk ? "ok" : "bad");
 
+  // Is this browser still being served an old cached copy of the game?
+  var build = "unknown";
+  try {
+    var html = await fetch("./index.html", { cache: "no-store" }).then(function (r) { return r.text(); });
+    var m = /const BUILD = "([^"]+)"/.exec(html);
+    build = m ? m[1] : "older build (no stamp)";
+  } catch (e) { build = "could not check"; }
+  row("Game version this browser gets", build, build === CURRENT_BUILD ? "ok" : "bad");
+
   var types = await gatherCandidates();
   row("Local network path", types.host ? "yes" : "no", types.host ? "ok" : "warn");
   row("Public address (STUN)", types.srflx ? "yes" : "no", types.srflx ? "ok" : "warn");
   row("Relay fallback (TURN)", types.relay ? "yes" : "no", types.relay ? "ok" : "bad");
 
   var v = document.getElementById("verdict");
-  if (!brokerOk) {
+  if (build !== CURRENT_BUILD) {
+    v.innerHTML = "<b>This browser is still running an old copy of the game.</b> Open " +
+      "<a href='./fix.html' style='color:#7dd3fc'>the repair page</a> once, then come back and re-run this test.";
+  } else if (!brokerOk) {
     v.innerHTML = "<b>Cannot reach the matchmaking server.</b> Something on this network is blocking it — a school or office firewall, or a content blocker. Try a phone hotspot.";
   } else if (types.relay) {
     v.innerHTML = "<b>This device should work.</b> It can fall back to a relay, which gets through even strict networks.";

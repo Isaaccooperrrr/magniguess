@@ -1611,6 +1611,7 @@ function roomNext(room) {
    WebRTC via PeerJS's free public broker, so there is nothing to sign up for
    and nothing to run. The library is fetched only when someone actually opens
    online play.                                                            */
+const BUILD = "2026-09-10d";   // bumped on every deploy, so a stale copy is detectable
 const PEERJS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js";
 const peerIdFor = (code) => `magniguess-v1-${code}`;
 const CONNECT_TIMEOUT = 20000;
